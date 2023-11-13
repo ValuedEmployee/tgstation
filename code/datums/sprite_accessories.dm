@@ -1785,12 +1785,14 @@
 	icon = 'icons/mob/human/cat_features.dmi'
 	icon_state = "rabbit"
 	color_src = HAIR_COLOR
+	locked = TRUE // the community is not ready for the bunnygirl future
 
 /datum/sprite_accessory/tails/human/bunny_alt
 	name = "Bunny 2"
 	icon = 'icons/mob/human/cat_features.dmi'
 	icon_state = "rabbit_alt"
 	color_src = HAIR_COLOR
+	locked = TRUE // the community is not ready for the bunnygirl future
 
 /datum/sprite_accessory/tails/monkey
 
@@ -1873,6 +1875,7 @@
 	name = "Bunny"
 	icon_state = "bunny"
 	locked = TRUE // too powerful for roundstart
+	color_src = HAIR_COLOR
 
 /datum/sprite_accessory/horns
 	icon = 'icons/mob/human/species/lizard/lizard_misc.dmi'
@@ -1931,11 +1934,13 @@
 	name = "Bunny"
 	icon_state = "bunny"
 	color_src = HAIR_COLOR
+	locked = TRUE // the community is not ready for the bunnygirl future
 
 /datum/sprite_accessory/ears/rabbit
 	name = "Rabbit"
 	icon_state = "rabbit"
 	color_src = HAIR_COLOR
+	locked = TRUE // the community is not ready for the bunnygirl future
 
 /datum/sprite_accessory/ears/bunny_large
 	name = "Bunny (Large)"
@@ -1944,6 +1949,7 @@
 	dimension_x = 32
 	dimension_y = 48
 	color_src = HAIR_COLOR
+	locked = TRUE // the community is not ready for the bunnygirl future
 
 /datum/sprite_accessory/ears/rabbit_large
 	name = "Rabbit (Large)"
@@ -1952,6 +1958,7 @@
 	dimension_x = 32
 	dimension_y = 48
 	color_src = HAIR_COLOR
+	locked = TRUE // the community is not ready for the bunnygirl future
 
 /datum/sprite_accessory/ears/fox
 	icon = 'icons/mob/human/fox_features.dmi'
