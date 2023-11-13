@@ -192,14 +192,10 @@ Unlike normal organs, we're actually inside a persons limbs at all times
 /datum/bodypart_overlay/mutant/snout/get_global_feature_list()
 	return SSaccessories.snouts_list
 
-/datum/bodypart_overlay/mutant/snout/bunny
-	color_source = ORGAN_COLOR_HAIR
-
 /obj/item/organ/external/snout/bunny
 	name = "bunny snout"
 	desc = "So fuzzy!"
 	sprite_to_use = "Bunny"
-	bodypart_overlay = /datum/bodypart_overlay/mutant/snout/bunny
 
 ///A moth's antennae
 /obj/item/organ/external/antennae
