@@ -1,7 +1,9 @@
 // tgstation-server DMAPI
 // The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in IETF RFC 2119.
 
+
 #define TGS_DMAPI_VERSION "7.3.0"
+
 
 // All functions and datums outside this document are subject to change with any version and should not be relied on.
 
@@ -114,6 +116,7 @@
 #define TGS_EVENT_WORLD_PRIME 21
 // DMAPI also doesnt implement this
 // #define TGS_EVENT_DREAM_DAEMON_LAUNCH 22
+
 /// After a single submodule update is performed. Parameters: Updated submodule name.
 #define TGS_EVENT_REPO_SUBMODULE_UPDATE 23
 /// After CodeModifications are applied, before DreamMaker is run. Parameters: Game directory path, origin commit sha, version string of the used engine.
