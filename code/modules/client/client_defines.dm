@@ -19,8 +19,8 @@
 	 * By default in byond if you define a proc on datums, that proc will exist on nearly every single type
 	 * from icons to images to atoms to mobs to objs to turfs to areas, it won't however, appear on client
 	 *
-	 * instead by default they act like their own independent type so while you can do istype(icon, /datum)
-	 * and have it return true, you can't do istype(client, /datum), it will always return false.
+	 * instead by default they act like their own independent type so while you can do isdatum(icon)
+	 * and have it return true, you can't do isdatum(client), it will always return false.
 	 *
 	 * This makes writing oo code hard, when you have to consider this extra special case
 	 *
@@ -45,11 +45,11 @@
 	var/datum/click_intercept = null
 	///Time when the click was intercepted
 	var/click_intercept_time = 0
-	///Used for admin AI interaction
-	var/AI_Interact = FALSE
 
 	///Used to cache this client's bans to save on DB queries
 	var/ban_cache = null
+	///If we are currently building this client's ban cache, this var stores the timeofday we started at
+	var/ban_cache_start = 0
 	///Contains the last message sent by this client - used to protect against copy-paste spamming.
 	var/last_message = ""
 	///contins a number of how many times a message identical to last_message was sent.
@@ -74,8 +74,6 @@
 	var/move_delay = 0
 	///The visual delay to use for the current client.Move(), mostly used for making a client based move look like it came from some other slower source
 	var/visual_delay = 0
-	///Current area of the controlled mob
-	var/area = null
 
 		///////////////
 		//SOUND STUFF//
@@ -158,8 +156,6 @@
 
 	///Autoclick list of two elements, first being the clicked thing, second being the parameters.
 	var/list/atom/selected_target[2]
-	///Autoclick variable referencing the associated item.
-	var/obj/item/active_mousedown_item = null
 	///Used in MouseDrag to preserve the original mouse click parameters
 	var/mouseParams = ""
 	///Used in MouseDrag to preserve the last mouse-entered location. Weakref
@@ -170,6 +166,10 @@
 	var/middragtime = 0
 	//Middle-mouse-button clicked object control for aimbot exploit detection. Weakref
 	var/datum/weakref/middle_drag_atom_ref
+	//When we started the currently active drag
+	var/drag_start = 0
+	//The params we were passed at the start of the drag, in list form
+	var/list/drag_details
 
 
 	/// Messages currently seen by this client
@@ -195,6 +195,7 @@
 
 	var/list/parallax_layers
 	var/list/parallax_layers_cached
+	var/atom/movable/screen/parallax_home/parallax_rock
 	///this is the last recorded client eye by SSparallax/fire()
 	var/atom/movable/movingmob
 	var/turf/previous_turf
@@ -204,8 +205,8 @@
 	var/parallax_movedir = 0
 	/// How many parallax layers to show our client
 	var/parallax_layers_max = 4
-	/// Timer for the area directional animation
-	var/parallax_animate_timer
+	/// Timers for the area directional animation, one for each layer
+	var/list/parallax_animate_timers
 	/// Do we want to do parallax animations at all?
 	/// Exists to prevent laptop fires
 	var/do_parallax_animations = TRUE
@@ -236,6 +237,9 @@
 	var/list/keys_held = list()
 	/// A buffer for combinations such of modifiers + keys (ex: CtrlD, AltE, ShiftT). Format: `"key"` -> `"combo"` (ex: `"D"` -> `"CtrlD"`)
 	var/list/key_combos_held = list()
+	/// The direction we WANT to move, based off our keybinds
+	/// Will be udpated to be the actual direction later on
+	var/intended_direction = NONE
 	/*
 	** These next two vars are to apply movement for keypresses and releases made while move delayed.
 	** Because discarding that input makes the game less responsive.
@@ -259,3 +263,13 @@
 
 	/// Does this client have typing indicators enabled?
 	var/typing_indicators = FALSE
+
+	/// Loot panel for the client
+	var/datum/lootpanel/loot_panel
+
+	///Which ambient sound this client is currently being provided.
+	var/current_ambient_sound
+
+	/// Does this client's mob need to rebuild its plane masters after login?
+	/// This is currently only used so a client can switch between 515 and 516 without breaking their rendering.
+	var/rebuild_plane_masters = FALSE

@@ -1,5 +1,20 @@
-/// Base timeout for creating mutation activators and other injectors
-#define INJECTOR_TIMEOUT 100
+/// Base timeout for creating mutation activators
+#define MIN_ACTIVATOR_TIMEOUT 5 SECONDS
+/// Base cooldown multiplier for activator upgrades
+#define ACTIVATOR_COOLDOWN_MULTIPLIER 0.25
+/// Base timeout for creating mutation injectors
+#define MIN_INJECTOR_TIMEOUT 10 SECONDS
+/// Base cooldown multiplier for injecotr upgrades
+#define INJECTOR_COOLDOWN_MULTIPLIER 0.15
+
+/// Base timeout for creating advanced injectors
+#define MIN_ADVANCED_TIMEOUT 15 SECONDS
+/// Base cooldown multiplier for advanced injector upgrades
+#define ADVANCED_COOLDOWN_MULTIPLIER 0.1
+
+/// Used for other things like UI/UE/Initial CD
+#define MISC_INJECTOR_TIMEOUT 60 SECONDS
+
 /// Maximum number of genetic makeup storage slots in DNA Console
 #define NUMBER_OF_BUFFERS 3
 /// Timeout for DNA Scramble in DNA Consoles
@@ -20,7 +35,7 @@
 #define GENETIC_DAMAGE_ACCURACY_MULTIPLIER 3
 
 /// Special status indicating a scanner occupant is transforming eg. from monkey to human
-#define STATUS_TRANSFORMING 4
+#define STATUS_TRANSFORMING 5
 
 /// Multiplier for how much genetic damage received from DNA Console functionality
 #define GENETIC_DAMAGE_IRGENETIC_DAMAGE_MULTIPLIER 1
@@ -54,7 +69,7 @@
 	icon_keyboard = "med_key"
 	density = TRUE
 	circuit = /obj/item/circuitboard/computer/scan_consolenew
-
+	interaction_flags_click = ALLOW_SILICON_REACH
 	light_color = LIGHT_COLOR_BLUE
 
 	/// Link to the techweb's stored research. Used to retrieve stored mutations
@@ -205,15 +220,14 @@
 			return
 	return ..()
 
-/obj/machinery/computer/scan_consolenew/AltClick(mob/user)
-	// Make sure the user can interact with the machine.
-	. = ..()
-	if(!can_interact(user))
-		return
-	if(!user.canUseTopic(src, !issilicon(user)))
-		return
+/obj/machinery/computer/scan_consolenew/multitool_act(mob/living/user, obj/item/multitool/tool)
+	if(!QDELETED(tool.buffer) && istype(tool.buffer, /datum/techweb))
+		stored_research = tool.buffer
+	return TRUE
 
+/obj/machinery/computer/scan_consolenew/click_alt(mob/user)
 	eject_disk(user)
+	return CLICK_ACTION_SUCCESS
 
 /obj/machinery/computer/scan_consolenew/Initialize(mapload)
 	. = ..()
@@ -222,7 +236,7 @@
 	connect_to_scanner()
 
 	// Set appropriate ready timers and limits for machines functions
-	injector_ready = world.time + INJECTOR_TIMEOUT
+	injector_ready = world.time + MISC_INJECTOR_TIMEOUT
 	scramble_ready = world.time + SCRAMBLE_TIMEOUT
 	joker_ready = world.time + JOKER_TIMEOUT
 	COOLDOWN_START(src, enzyme_copy_timer, ENZYME_COPY_BASE_COOLDOWN)
@@ -230,9 +244,13 @@
 	// Set the default tgui state
 	set_default_state()
 
+/obj/machinery/computer/scan_consolenew/post_machine_initialize()
+	. = ..()
 	// Link machine with research techweb. Used for discovering and accessing
-	//  already discovered mutations
-	stored_research = SSresearch.science_tech
+	// already discovered mutations
+	if(!CONFIG_GET(flag/no_default_techweb_link) && !stored_research)
+		CONNECT_TO_RND_SERVER_ROUNDSTART(stored_research, src)
+
 
 /obj/machinery/computer/scan_consolenew/ui_interact(mob/user, datum/tgui/ui)
 	. = ..()
@@ -328,8 +346,8 @@
 		data["subjectUF"] = scanner_occupant.dna.unique_features
 		data["storage"]["occupant"] = tgui_occupant_mutations
 
-		var/datum/component/genetic_damage/genetic_damage = scanner_occupant.GetComponent(/datum/component/genetic_damage)
-		data["subjectDamage"] = genetic_damage ? round((genetic_damage.total_damage / genetic_damage.minimum_before_damage) * 100, 0.1) : 0
+		var/datum/status_effect/genetic_damage/genetic_damage = scanner_occupant.has_status_effect(/datum/status_effect/genetic_damage)
+		data["subjectDamage"] = genetic_damage ? round((genetic_damage.total_damage / genetic_damage.minimum_before_tox_damage) * 100, 0.1) : 0
 	else
 		data["subjectName"] = null
 		data["subjectStatus"] = null
@@ -380,7 +398,7 @@
 
 	return data
 
-/obj/machinery/computer/scan_consolenew/ui_act(action, list/params)
+/obj/machinery/computer/scan_consolenew/ui_act(action, list/params, datum/tgui/ui, datum/ui_state/state)
 	var/static/list/gene_letters = list("A", "T", "C", "G");
 	var/static/gene_letter_count = length(gene_letters)
 
@@ -391,7 +409,6 @@
 	. = TRUE
 
 	add_fingerprint(usr)
-	usr.set_machine(src)
 
 	switch(action)
 		// Connect this DNA Console to a nearby DNA Scanner
@@ -423,15 +440,18 @@
 			// GUARD CHECK - Can we genetically modify the occupant? Includes scanner
 			//  operational guard checks.
 			// GUARD CHECK - Is scramble DNA actually ready?
-			if(!can_modify_occupant() || !(scramble_ready < world.time))
+			if(!can_modify_occupant() || !(scramble_ready < world.time) || HAS_TRAIT(scanner_occupant, TRAIT_NO_DNA_SCRAMBLE))
 				return
 
 			scanner_occupant.dna.remove_all_mutations(list(MUT_NORMAL, MUT_EXTRA))
 			scanner_occupant.dna.generate_dna_blocks()
 			scramble_ready = world.time + SCRAMBLE_TIMEOUT
 			to_chat(usr,span_notice("DNA scrambled."))
-			scanner_occupant.AddComponent(/datum/component/genetic_damage, GENETIC_DAMAGE_STRENGTH_MULTIPLIER*50/(connected_scanner.damage_coeff ** 2))
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			scanner_occupant.apply_status_effect(/datum/status_effect/genetic_damage, GENETIC_DAMAGE_STRENGTH_MULTIPLIER*50/(connected_scanner.damage_coeff ** 2))
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Check whether a specific mutation is eligible for discovery within the
@@ -537,6 +557,7 @@
 						var/truegenes = GET_SEQUENCE(path)
 						newgene = truegenes[genepos]
 						joker_ready = world.time + JOKER_TIMEOUT - (JOKER_UPGRADE * (connected_scanner.precision_coeff-1))
+						tgui_view_state["jokerActive"] = FALSE
 					else
 						var/current_letter = gene_letters.Find(sequence[genepos])
 						newgene = (current_letter == gene_letter_count) ? gene_letters[1] : gene_letters[current_letter + 1]
@@ -551,7 +572,7 @@
 			// Copy genome to scanner occupant and do some basic mutation checks as
 			//  we've increased the occupant genetic damage
 			scanner_occupant.dna.mutation_index[path] = copytext(sequence, 1, genepos) + newgene + copytext(sequence, genepos + 1)
-			scanner_occupant.AddComponent(/datum/component/genetic_damage, GENETIC_DAMAGE_STRENGTH_MULTIPLIER/connected_scanner.damage_coeff)
+			scanner_occupant.apply_status_effect(/datum/status_effect/genetic_damage, GENETIC_DAMAGE_STRENGTH_MULTIPLIER/connected_scanner.damage_coeff)
 			scanner_occupant.domutcheck()
 
 			// GUARD CHECK - Modifying genetics can lead to edge cases where the
@@ -565,7 +586,10 @@
 
 			// Check if we cracked a mutation
 			check_discovery(alias)
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Apply a chromosome to a specific mutation.
@@ -599,7 +623,10 @@
 				if(CM.can_apply(HM) && (CM.name == params["chromo"]))
 					stored_chromosomes -= CM
 					CM.apply(HM)
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Attempt overwriting Base DNA : The pairs are instead the top row vs the top row of the new code.
@@ -656,7 +683,7 @@
 			var/datum/mutation/human/target_mutation = get_mut_by_ref(bref, search_flags)
 
 			// Prompt for modifier string
-			var/new_sequence_input = tgui_input_text(usr, "Enter a replacement sequence", "Inherent Gene Replacement", 32, encode = FALSE)
+			var/new_sequence_input = tgui_input_text(usr, "Enter a replacement sequence", "Inherent Gene Replacement", max_length = 32, encode = FALSE)
 			// Drop out if the string is the wrong length
 			if(length(new_sequence_input) != 32)
 				return
@@ -674,10 +701,10 @@
 				//figure out which pair type the character belongs to
 				pair_str = ((at_str[1] == char || at_str[2] == char) ? at_str : ((cg_str[1] == char || cg_str[2] == char) ? cg_str : null))
 				//Valid pair from character
-				new_pair = (pair_str ? char + (pair_str[1]==char?pair_str[2]:pair_str[1]) : null)
+				new_pair = (pair_str ? char + (pair_str[1] == char ? pair_str[2] : pair_str[1]) : null)
 				// every second letter in the sequence represents a valid pair of the new sequence, otherwise it belongs to old
 				if(new_pair)
-					if(i%2==0)
+					if(i%2 == 0)
 						new_sequence+=new_pair
 					else
 						old_sequence+=new_pair
@@ -701,10 +728,10 @@
 				//should be a "sometimes" thing, not an "always" thing, but risky enough to force the need for precautions to isolate the subject
 				if(prob(60))
 					var/datum/disease/advance/random/random_disease = new /datum/disease/advance/random(2,2)
-					random_disease.try_infect(scanner_occupant, FALSE)
+					scanner_occupant.ContactContractDisease(random_disease)
 				else if (prob(30))
 					var/datum/disease/advance/random/random_disease = new /datum/disease/advance/random(3,4)
-					random_disease.try_infect(scanner_occupant, FALSE)
+					scanner_occupant.ContactContractDisease(random_disease)
 				//Instantiate list to hold resulting mutation_index
 				var/mutation_data[0]
 				//Start with the bad mutation, overwrite with the desired mutation if it passes the check
@@ -735,7 +762,10 @@
 				//Not sure what this does but it seems to be a sanity check and this needs a sanity check
 				scanner_occupant.domutcheck()
 
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 
 			return
 
@@ -801,22 +831,37 @@
 				I.research = TRUE
 				// If there's an operational connected scanner, we can use its upgrades
 				//  to improve our injector's genetic damage generation
+				var/cd_reduction_mult = 1 + ACTIVATOR_COOLDOWN_MULTIPLIER
+				var/base_cd_time = max(MIN_ACTIVATOR_TIMEOUT, abs(HM.instability) SECONDS)
+
 				if(scanner_operational())
 					I.damage_coeff = connected_scanner.damage_coeff*4
-					injector_ready = world.time + INJECTOR_TIMEOUT * (1 - 0.1 * connected_scanner.precision_coeff)
-				else
-					injector_ready = world.time + INJECTOR_TIMEOUT
+					// T1: 1.25 - 0.25: 1: 100%
+					// T4: 1.25 - 1: 0.25 = 25%
+					// 25% reduction per tier
+					cd_reduction_mult -= ACTIVATOR_COOLDOWN_MULTIPLIER * (connected_scanner.precision_coeff)
+
+				injector_ready = world.time + (base_cd_time * cd_reduction_mult)
 			else
 				I.name = "[HM.name] mutator"
-				I.doitanyway = TRUE
+				I.force_mutate = TRUE
 				// If there's an operational connected scanner, we can use its upgrades
 				//  to improve our injector's genetic damage generation
+				var/cd_reduction_mult = 1 + INJECTOR_COOLDOWN_MULTIPLIER
+				var/base_cd_time = max(MIN_INJECTOR_TIMEOUT, abs(HM.instability) * 1 SECONDS)
+
 				if(scanner_operational())
-					I.damage_coeff = connected_scanner.damage_coeff
-					injector_ready = world.time + INJECTOR_TIMEOUT * 5 * (1 - 0.1 * connected_scanner.precision_coeff)
-				else
-					injector_ready = world.time + INJECTOR_TIMEOUT * 5
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+					I.damage_coeff = connected_scanner.damage_coeff*4
+					// T1: 1.15 - 0.15: 1: 100%
+					// T4: 1.15 - 0.60: 0.55: 55%
+					// 15% reduction per tier
+					cd_reduction_mult -= (INJECTOR_COOLDOWN_MULTIPLIER * connected_scanner.precision_coeff)
+
+				injector_ready = world.time + (base_cd_time * cd_reduction_mult)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Save a mutation to the console's storage buffer.
@@ -1027,7 +1072,10 @@
 			var/datum/mutation/human/HM = GET_INITIALIZED_MUTATION(result_path)
 			stored_research.discovered_mutations += result_path
 			say("Successfully mutated [HM.name].")
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Combines two mutations from the disk to try and create a new mutation
@@ -1090,7 +1138,10 @@
 			var/datum/mutation/human/HM = GET_INITIALIZED_MUTATION(result_path)
 			stored_research.discovered_mutations += result_path
 			say("Successfully mutated [HM.name].")
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Sets the Genetic Makeup pulse strength.
@@ -1296,7 +1347,7 @@
 					//  However, if this is the case, we can't make a complete injector and
 					//  this catches that edge case
 					if(!buffer_slot["name"] || !buffer_slot["UF"] || !buffer_slot["blood_type"])
-						to_chat(usr,"<span class='warning'>Genetic data corrupted, unable to create injector.</span>")
+						to_chat(usr,span_warning("Genetic data corrupted, unable to create injector."))
 						return
 
 					I = new /obj/item/dnainjector/timed(loc)
@@ -1325,8 +1376,11 @@
 			// If we successfully created an injector, don't forget to set the new
 			//  ready timer.
 			if(I)
-				injector_ready = world.time + INJECTOR_TIMEOUT
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+				injector_ready = world.time + MISC_INJECTOR_TIMEOUT
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Applies a genetic makeup buffer to the scanner occupant
@@ -1363,7 +1417,10 @@
 			var/type = params["type"]
 
 			apply_genetic_makeup(type, buffer_slot)
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Applies a genetic makeup buffer to the next scanner occupant. This sets
@@ -1429,7 +1486,10 @@
 			genetic_damage_pulse_timer = world.time + (pulse_duration*10)
 			genetic_damage_pulse_index = WRAP(text2num(params["index"]), 1, len+1)
 			begin_processing()
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Cancels the delayed action - In this context it is not the genetic damage
@@ -1505,22 +1565,29 @@
 
 			// Run through each mutation in our Advanced Injector and add them to a
 			//  new injector
+			var/total_stability
 			for(var/A in injector)
 				var/datum/mutation/human/HM = A
 				I.add_mutations += new HM.type(copymut=HM)
+				total_stability += HM.instability
 
 			// Force apply any mutations, this is functionality similar to mutators
-			I.doitanyway = TRUE
+			I.force_mutate = TRUE
 			I.name = "Advanced [inj_name] injector"
 
 			// If there's an operational connected scanner, we can use its upgrades
 			//  to improve our injector's genetic damage generation
-			if(scanner_operational())
-				I.damage_coeff = connected_scanner.damage_coeff
-				injector_ready = world.time + INJECTOR_TIMEOUT * 8 * (1 - 0.1 * connected_scanner.precision_coeff)
-			else
-				injector_ready = world.time + INJECTOR_TIMEOUT * 8
+			var/cd_reduction_mult = 1 + ADVANCED_COOLDOWN_MULTIPLIER
+			var/base_cd_time = max(MIN_ADVANCED_TIMEOUT, abs(total_stability) SECONDS)
 
+			if(scanner_operational())
+				I.damage_coeff = connected_scanner.damage_coeff*4
+				// T1: 1.1 - 0.1: 1: 100%
+				// T4: 1.1 - 0.4: 0.7 = 70%
+				// 10% reduction per tier
+				cd_reduction_mult -= ADVANCED_COOLDOWN_MULTIPLIER * (connected_scanner.precision_coeff)
+
+			injector_ready = world.time + (base_cd_time * cd_reduction_mult)
 			return
 
 		// Adds a mutation to an advanced injector
@@ -1528,13 +1595,8 @@
 		// params["mutref"] - ATOM Ref of specific mutation to add to the injector
 		// params["advinj"] - Name of the advanced injector to add the mutation to
 		if("add_advinj_mut")
-			// GUARD CHECK - Can we genetically modify the occupant? Includes scanner
-			//  operational guard checks.
-			// This is needed because this operation can only be completed from the
-			//  genetic sequencer.
-			if(!can_modify_occupant())
+			if(!scanner_operational())
 				return
-
 			var/adv_inj = params["advinj"]
 
 			// GUARD CHECK - Make sure our advanced injector actually exists. This
@@ -1562,6 +1624,9 @@
 				return
 
 			var/bref = params["mutref"]
+			if(search_flag & SEARCH_OCCUPANT)
+				if(!can_modify_occupant())
+					return
 			// We've already made sure we can modify the occupant, so this is safe to
 			//  call
 			var/datum/mutation/human/HM = get_mut_by_ref(bref, search_flag)
@@ -1590,7 +1655,10 @@
 			A.copy_mutation(HM)
 			injector_selection[adv_inj] += A
 			to_chat(usr,span_notice("Mutation successfully added to advanced injector."))
-			connected_scanner.use_power(connected_scanner.active_power_usage)
+			if(connected_scanner)
+				connected_scanner.use_energy(connected_scanner.active_power_usage)
+			else
+				use_energy(active_power_usage)
 			return
 
 		// Deletes a mutation from an advanced injector
@@ -1655,7 +1723,7 @@
 			COOLDOWN_START(src, enzyme_copy_timer, ENZYME_COPY_BASE_COOLDOWN)
 			scanner_occupant.dna.unique_identity = buffer_slot["UI"]
 			scanner_occupant.updateappearance(mutations_overlay_update=1)
-			scanner_occupant.AddComponent(/datum/component/genetic_damage, damage_increase)
+			scanner_occupant.apply_status_effect(/datum/status_effect/genetic_damage, damage_increase)
 			scanner_occupant.domutcheck()
 			return TRUE
 		if("uf")
@@ -1663,12 +1731,12 @@
 			//  However, if this is the case, we can't make a complete injector and
 			//  this catches that edge case
 			if(!buffer_slot["UF"])
-				to_chat(usr,"<span class='warning'>Genetic data corrupted, unable to apply genetic data.</span>")
+				to_chat(usr,span_warning("Genetic data corrupted, unable to apply genetic data."))
 				return FALSE
 			COOLDOWN_START(src, enzyme_copy_timer, ENZYME_COPY_BASE_COOLDOWN)
 			scanner_occupant.dna.unique_features = buffer_slot["UF"]
 			scanner_occupant.updateappearance(mutcolor_update=1, mutations_overlay_update=1)
-			scanner_occupant.AddComponent(/datum/component/genetic_damage, damage_increase)
+			scanner_occupant.apply_status_effect(/datum/status_effect/genetic_damage, damage_increase)
 			scanner_occupant.domutcheck()
 			return TRUE
 		if("ue")
@@ -1683,7 +1751,7 @@
 			scanner_occupant.name = buffer_slot["name"]
 			scanner_occupant.dna.unique_enzymes = buffer_slot["UE"]
 			scanner_occupant.dna.blood_type = buffer_slot["blood_type"]
-			scanner_occupant.AddComponent(/datum/component/genetic_damage, damage_increase)
+			scanner_occupant.apply_status_effect(/datum/status_effect/genetic_damage, damage_increase)
 			scanner_occupant.domutcheck()
 			return TRUE
 		if("mixed")
@@ -1701,7 +1769,7 @@
 			scanner_occupant.name = buffer_slot["name"]
 			scanner_occupant.dna.unique_enzymes = buffer_slot["UE"]
 			scanner_occupant.dna.blood_type = buffer_slot["blood_type"]
-			scanner_occupant.AddComponent(/datum/component/genetic_damage, damage_increase)
+			scanner_occupant.apply_status_effect(/datum/status_effect/genetic_damage, damage_increase)
 			scanner_occupant.domutcheck()
 			return TRUE
 
@@ -2253,20 +2321,32 @@
 
 /obj/machinery/computer/scan_consolenew/proc/set_connected_scanner(new_scanner)
 	if(connected_scanner)
-		UnregisterSignal(connected_scanner, COMSIG_PARENT_QDELETING)
+		UnregisterSignal(connected_scanner, COMSIG_QDELETING)
 		if(connected_scanner.linked_console == src)
 			connected_scanner.set_linked_console(null)
 	connected_scanner = new_scanner
 	if(connected_scanner)
-		RegisterSignal(connected_scanner, COMSIG_PARENT_QDELETING, .proc/react_to_scanner_del)
+		RegisterSignal(connected_scanner, COMSIG_QDELETING, PROC_REF(react_to_scanner_del))
 		connected_scanner.set_linked_console(src)
 
 /obj/machinery/computer/scan_consolenew/proc/react_to_scanner_del(datum/source)
 	SIGNAL_HANDLER
 	set_connected_scanner(null)
 
+#undef MIN_ACTIVATOR_TIMEOUT
+#undef ACTIVATOR_COOLDOWN_MULTIPLIER
+#undef MIN_INJECTOR_TIMEOUT
+#undef INJECTOR_COOLDOWN_MULTIPLIER
+
+#undef MIN_ADVANCED_TIMEOUT
+#undef ADVANCED_COOLDOWN_MULTIPLIER
+
+#undef MISC_INJECTOR_TIMEOUT
+
+#undef GENETIC_DAMAGE_PULSE_UNIQUE_IDENTITY
+#undef GENETIC_DAMAGE_PULSE_UNIQUE_FEATURES
+
 #undef ENZYME_COPY_BASE_COOLDOWN
-#undef INJECTOR_TIMEOUT
 #undef NUMBER_OF_BUFFERS
 #undef SCRAMBLE_TIMEOUT
 #undef JOKER_TIMEOUT

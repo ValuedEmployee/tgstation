@@ -32,7 +32,7 @@ GLOBAL_VAR(station_nuke_source)
 	/// world time tracker for when we're going to explode
 	var/detonation_timer = null
 	/// The code we need to detonate this nuke. Starts as "admin", purposefully un-enterable
-	var/r_code = "ADMIN"
+	var/r_code = NUKE_CODE_UNSET
 	/// If TRUE, the correct code has been entered and we can start the nuke
 	var/yes_code = FALSE
 	/// Whether the nuke safety is on, can't explode if it is
@@ -57,7 +57,6 @@ GLOBAL_VAR(station_nuke_source)
 /obj/machinery/nuclearbomb/Initialize(mapload)
 	. = ..()
 	countdown = new(src)
-	GLOB.nuke_list += src
 	core = new /obj/item/nuke_core(src)
 	STOP_PROCESSING(SSobj, core)
 	update_appearance()
@@ -69,17 +68,37 @@ GLOBAL_VAR(station_nuke_source)
 	if(!exploding)
 		// If we're not exploding, set the alert level back to normal
 		toggle_nuke_safety()
-	GLOB.nuke_list -= src
 	QDEL_NULL(countdown)
 	QDEL_NULL(core)
 	return ..()
 
 /obj/machinery/nuclearbomb/examine(mob/user)
 	. = ..()
-	if(exploding)
-		. += span_bolddanger("It is in the process of exploding. Perhaps reviewing your affairs is in order.")
-	if(timing)
-		. += span_danger("There are [get_time_left()] seconds until detonation.")
+	switch(deconstruction_state)
+		if(NUKESTATE_UNSCREWED)
+			. += span_notice("The front panel has been unscrewed and can be <b>pried open</b>.")
+		if(NUKESTATE_PANEL_REMOVED)
+			. += span_notice("The inner plate is exposed and can be cut with a <b>welding tool</b>.")
+		if(NUKESTATE_WELDED)
+			. += span_notice("The inner plate has been cut through and can be <b>pried off</b>.")
+		if(NUKESTATE_CORE_EXPOSED)
+			. += span_danger("The inner chamber is exposed, revealing [core] to the outside!")
+			. += span_notice("The damaged inner plate covering the inner chamber can be replaced with some <b>iron</b>.")
+		if(NUKESTATE_CORE_REMOVED)
+			. += span_notice("The inner chamber is exposed, but is empty.")
+		if(NUKESTATE_INTACT)
+			. += span_notice("The front panel is secured.")
+
+	switch(get_nuke_state())
+		if(NUKE_OFF_LOCKED)
+			. += span_notice("The device is awaiting activation codes.")
+		if(NUKE_OFF_UNLOCKED)
+			. += span_notice("The device is set and is ready for arming the detonation countdown.")
+		if(NUKE_ON_TIMING)
+			. += span_danger("There are [get_time_left()] seconds until detonation.")
+		if(NUKE_ON_EXPLODING)
+			. += span_bolddanger("It is in the process of exploding. Perhaps reviewing your affairs is in order.")
+
 
 /// Checks if the disk inserted is a real nuke disk or not.
 /obj/machinery/nuclearbomb/proc/disk_check(obj/item/disk/nuclear/inserted_disk)
@@ -97,7 +116,7 @@ GLOBAL_VAR(station_nuke_source)
 			return TRUE
 		auth = weapon
 		update_ui_mode()
-		playsound(src, 'sound/machines/terminal_insert_disc.ogg', 50, FALSE)
+		playsound(src, 'sound/machines/terminal/terminal_insert_disc.ogg', 50, FALSE)
 		add_fingerprint(user)
 		return TRUE
 
@@ -116,7 +135,7 @@ GLOBAL_VAR(station_nuke_source)
 				if(!weapon.tool_start_check(user, amount = 1))
 					return TRUE
 				to_chat(user, span_notice("You start cutting [src]'s inner plate..."))
-				if(weapon.use_tool(src, user, 8 SECONDS, volume=100, amount=1))
+				if(weapon.use_tool(src, user, 8 SECONDS, volume=100))
 					to_chat(user, span_notice("You cut [src]'s inner plate."))
 					deconstruction_state = NUKESTATE_WELDED
 					update_appearance()
@@ -126,7 +145,7 @@ GLOBAL_VAR(station_nuke_source)
 			if(istype(weapon, /obj/item/nuke_core_container))
 				var/obj/item/nuke_core_container/core_box = weapon
 				to_chat(user, span_notice("You start loading the plutonium core into [core_box]..."))
-				if(do_after(user, 5 SECONDS, target=src))
+				if(do_after(user, 5 SECONDS, target = src, hidden = TRUE))
 					if(core_box.load(core, user))
 						to_chat(user, span_notice("You load the plutonium core into [core_box]."))
 						deconstruction_state = NUKESTATE_CORE_REMOVED
@@ -227,12 +246,11 @@ GLOBAL_VAR(station_nuke_source)
 		if(NUKESTATE_CORE_REMOVED)
 			interior = "core-removed"
 		if(NUKESTATE_INTACT)
-			return
+			interior = null
 
 	switch(get_nuke_state())
 		if(NUKE_OFF_LOCKED)
-			lights = ""
-			return
+			lights = null
 		if(NUKE_OFF_UNLOCKED)
 			lights = "lights-safety"
 		if(NUKE_ON_TIMING)
@@ -330,7 +348,7 @@ GLOBAL_VAR(station_nuke_source)
 
 	return data
 
-/obj/machinery/nuclearbomb/ui_act(action, params)
+/obj/machinery/nuclearbomb/ui_act(action, list/params, datum/tgui/ui, datum/ui_state/state)
 	. = ..()
 	if(.)
 		return
@@ -338,7 +356,7 @@ GLOBAL_VAR(station_nuke_source)
 	switch(action)
 		if("eject_disk")
 			if(auth && auth.loc == src)
-				playsound(src, 'sound/machines/terminal_insert_disc.ogg', 50, FALSE)
+				playsound(src, 'sound/machines/terminal/terminal_insert_disc.ogg', 50, FALSE)
 				playsound(src, 'sound/machines/nuke/general_beep.ogg', 50, FALSE)
 				auth.forceMove(get_turf(src))
 				auth = null
@@ -346,7 +364,7 @@ GLOBAL_VAR(station_nuke_source)
 			else
 				var/obj/item/I = usr.is_holding_item_of_type(/obj/item/disk/nuclear)
 				if(I && disk_check(I) && usr.transferItemToLoc(I, src))
-					playsound(src, 'sound/machines/terminal_insert_disc.ogg', 50, FALSE)
+					playsound(src, 'sound/machines/terminal/terminal_insert_disc.ogg', 50, FALSE)
 					playsound(src, 'sound/machines/nuke/general_beep.ogg', 50, FALSE)
 					auth = I
 					. = TRUE
@@ -427,11 +445,12 @@ GLOBAL_VAR(station_nuke_source)
 	// We're safe now, so stop any ongoing timers
 	if(safety)
 		if(timing)
+			timing = FALSE
 			disarm_nuke()
 
-		timing = FALSE
 		detonation_timer = null
 		countdown.stop()
+	update_appearance(UPDATE_OVERLAYS) //only the lights overlay are affected by safety
 
 /// Arms the nuke, or disarms it if it's already active.
 /obj/machinery/nuclearbomb/proc/toggle_nuke_armed()
@@ -449,7 +468,8 @@ GLOBAL_VAR(station_nuke_source)
 /obj/machinery/nuclearbomb/proc/arm_nuke(mob/armer)
 	var/turf/our_turf = get_turf(src)
 	message_admins("\The [src] was armed at [ADMIN_VERBOSEJMP(our_turf)] by [armer ? ADMIN_LOOKUPFLW(armer) : "an unknown user"].")
-	log_game("\The [src] was armed at [loc_name(our_turf)] by [armer ? key_name(armer) : "an unknown user"].")
+	armer.log_message("armed \the [src].", LOG_GAME)
+	armer.add_mob_memory(/datum/memory/bomb_planted/nuke, antagonist = src)
 
 	previous_level = SSsecurity_level.get_current_level_as_number()
 	detonation_timer = world.time + (timer_set * 10)
@@ -460,13 +480,19 @@ GLOBAL_VAR(station_nuke_source)
 
 	countdown.start()
 	SSsecurity_level.set_level(SEC_LEVEL_DELTA)
+	notify_ghosts(
+		"A nuclear device has been armed in [get_area_name(src)]!",
+		source = src,
+		header = "Nuke Armed",
+	)
 	update_appearance()
 
 /// Disarms the nuke, reverting all pinpointers and the security level
 /obj/machinery/nuclearbomb/proc/disarm_nuke(mob/disarmer)
 	var/turf/our_turf = get_turf(src)
 	message_admins("\The [src] at [ADMIN_VERBOSEJMP(our_turf)] was disarmed by [disarmer ? ADMIN_LOOKUPFLW(disarmer) : "an unknown user"].")
-	log_game("\The [src] at [loc_name(our_turf)] was disarmed by [disarmer ? key_name(disarmer) : "an unknown user"].")
+	if(disarmer)
+		disarmer.log_message("disarmed [src].", LOG_GAME)
 
 	detonation_timer = null
 	SSsecurity_level.set_level(previous_level)
@@ -501,7 +527,7 @@ GLOBAL_VAR(station_nuke_source)
 
 /**
  * Begins the process of exploding the nuke.
- * [proc/explode] -> [proc/actually_explode] -> [proc/really_actually_explode]
+ * [proc/explode] -> [proc/actually_explode] -> [proc/really_actually_explode])
  *
  * Goes through a few timers and plays a cinematic.
  */
@@ -514,11 +540,13 @@ GLOBAL_VAR(station_nuke_source)
 	yes_code = FALSE
 	safety = TRUE
 	update_appearance()
-	sound_to_playing_players('sound/machines/alarm.ogg')
+	sound_to_playing_players('sound/announcer/alarm/nuke_alarm.ogg', 70)
 
-	if(SSticker?.mode)
+	SEND_GLOBAL_SIGNAL(COMSIG_GLOB_NUKE_DEVICE_DETONATING, src)
+
+	if(SSticker.HasRoundStarted())
 		SSticker.roundend_check_paused = TRUE
-	addtimer(CALLBACK(src, .proc/actually_explode), 10 SECONDS)
+	addtimer(CALLBACK(src, PROC_REF(actually_explode)), 10 SECONDS)
 	return TRUE
 
 /obj/machinery/nuclearbomb/proc/actually_explode()
@@ -559,11 +587,6 @@ GLOBAL_VAR(station_nuke_source)
 	else
 		detonation_status = DETONATION_MISSED_STATION
 
-	// Missing the station will register a hostile environment, until it actually explodes
-	if(detonation_status == DETONATION_MISSED_STATION)
-		SSshuttle.registerHostileEnvironment(src)
-		SSshuttle.lockdown = TRUE
-
 	// Now go play the cinematic
 	GLOB.station_nuke_source = detonation_status
 	really_actually_explode(detonation_status)
@@ -572,25 +595,44 @@ GLOBAL_VAR(station_nuke_source)
 	return detonation_status
 
 /obj/machinery/nuclearbomb/proc/really_actually_explode(detonation_status)
-	play_cinematic(get_cinematic_type(detonation_status), world, CALLBACK(SSticker, /datum/controller/subsystem/ticker/proc/station_explosion_detonation, src))
+	var/cinematic = get_cinematic_type(detonation_status)
+	if(!isnull(cinematic))
+		play_cinematic(cinematic, world, CALLBACK(SSticker, TYPE_PROC_REF(/datum/controller/subsystem/ticker, station_explosion_detonation), src))
 
-	var/turf/bomb_location = get_turf(src)
-	var/list/z_levels_to_blow = list()
-	if(detonation_status == DETONATION_HIT_STATION)
-		z_levels_to_blow |= SSmapping.levels_by_trait(ZTRAIT_STATION)
+	var/drop_level = TRUE
+	switch(detonation_status)
+		if(DETONATION_HIT_STATION)
+			nuke_effects(SSmapping.levels_by_trait(ZTRAIT_STATION))
+			drop_level = FALSE
 
-	// Don't kill people in the station if the nuke missed, even if we are technically on the same z-level
-	else if(detonation_status != DETONATION_NEAR_MISSED_STATION)
-		z_levels_to_blow |= bomb_location.z
+		if(DETONATION_HIT_SYNDIE_BASE)
+			priority_announce(
+				"Long Range Scanners indicate that the nuclear device has detonated on a previously unknown base, we assume \
+				the base to be of Syndicate Origin. Good work crew.",
+				"Nuclear Operations Command",
+			)
 
-	if(length(z_levels_to_blow))
-		nuke_effects(z_levels_to_blow)
+			var/datum/turf_reservation/syndicate_base = SSmapping.lazy_load_template(LAZY_TEMPLATE_KEY_NUKIEBASE)
+			ASYNC
+				for(var/turf/turf as anything in syndicate_base.reserved_turfs)
+					for(var/mob/living/about_to_explode in turf)
+						nuke_gib(about_to_explode, src)
+					CHECK_TICK
 
+		else
+			priority_announce(
+				"Long Range Scanners indicate that the nuclear device has detonated; however seismic activity on the station \
+				is minimal. We anticipate that the device has not detonated on the station itself.",
+				"Nuclear Operations Command",
+			)
+
+	if(drop_level)
+		SSsecurity_level.set_level(SEC_LEVEL_RED)
 	return TRUE
 
 /// Cause nuke effects to the passed z-levels.
 /obj/machinery/nuclearbomb/proc/nuke_effects(list/affected_z_levels)
-	INVOKE_ASYNC(GLOBAL_PROC, /proc/callback_on_everyone_on_z, affected_z_levels, CALLBACK(GLOBAL_PROC, /proc/nuke_gib), src)
+	INVOKE_ASYNC(GLOBAL_PROC, GLOBAL_PROC_REF(callback_on_everyone_on_z), affected_z_levels, CALLBACK(GLOBAL_PROC, GLOBAL_PROC_REF(nuke_gib)), src)
 
 /// Gets what type of cinematic this nuke showcases depending on where we detonated.
 /obj/machinery/nuclearbomb/proc/get_cinematic_type(detonation_status)
@@ -605,10 +647,13 @@ GLOBAL_VAR(station_nuke_source)
  * Helper proc that handles gibbing someone who has been nuked.
  */
 /proc/nuke_gib(mob/living/gibbed, atom/source)
+	if(HAS_TRAIT(gibbed, TRAIT_NUKEIMMUNE))
+		return FALSE
+
 	if(istype(gibbed.loc, /obj/structure/closet/secure_closet/freezer))
 		var/obj/structure/closet/secure_closet/freezer/freezer = gibbed.loc
 		if(!freezer.jones)
-			to_chat(gibbed, span_boldannounce("You hold onto [freezer] as [source] goes off. \
+			to_chat(gibbed, span_bolddanger("You hold onto [freezer] as [source] goes off. \
 				Luckily, as [freezer] is lead-lined, you survive."))
 			freezer.jones = TRUE
 			return FALSE
@@ -617,7 +662,8 @@ GLOBAL_VAR(station_nuke_source)
 		return FALSE
 
 	to_chat(gibbed, span_userdanger("You are shredded to atoms by [source]!"))
-	gibbed.gib()
+	gibbed.investigate_log("has been gibbed by a nuclear blast.", INVESTIGATE_DEATHS)
+	gibbed.gib(DROP_ALL_REMAINS)
 	return TRUE
 
 /**

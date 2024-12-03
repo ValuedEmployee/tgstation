@@ -4,6 +4,11 @@
 	assignment = JOB_CENTCOM
 	trim_state = "trim_centcom"
 	sechud_icon_state = SECHUD_CENTCOM
+	department_color = COLOR_CENTCOM_BLUE
+	subdepartment_color = COLOR_CENTCOM_BLUE
+	threat_modifier = -10 // Centcom are legally allowed to do whatever they want
+	big_pointer = TRUE
+	pointer_color = COLOR_CENTCOM_BLUE
 
 /// Trim for Centcom VIPs
 /datum/id_trim/centcom/vip
@@ -14,6 +19,10 @@
 /datum/id_trim/centcom/custodian
 	access = list(ACCESS_CENT_GENERAL, ACCESS_CENT_LIVING, ACCESS_CENT_STORAGE)
 	assignment = JOB_CENTCOM_CUSTODIAN
+	trim_state = "trim_janitor"
+	department_color = COLOR_CENTCOM_BLUE
+	subdepartment_color = COLOR_SERVICE_LIME
+	big_pointer = FALSE
 
 /// Trim for Centcom Thunderdome Overseers.
 /datum/id_trim/centcom/thunderdome_overseer
@@ -29,10 +38,12 @@
 /datum/id_trim/centcom/intern
 	access = list(ACCESS_CENT_GENERAL, ACCESS_CENT_LIVING, ACCESS_WEAPONS)
 	assignment = "CentCom Intern"
+	big_pointer = FALSE
 
 /// Trim for Centcom Head Interns. Different assignment, common station access added on.
 /datum/id_trim/centcom/intern/head
 	assignment = "CentCom Head Intern"
+	big_pointer = TRUE
 
 /datum/id_trim/centcom/intern/head/New()
 	. = ..()
@@ -43,11 +54,13 @@
 /datum/id_trim/centcom/bounty_hunter
 	access = list(ACCESS_CENT_GENERAL)
 	assignment = "Bounty Hunter"
+	big_pointer = FALSE
 
 /// Trim for Centcom Bartenders.
 /datum/id_trim/centcom/bartender
 	access = list(ACCESS_CENT_GENERAL, ACCESS_CENT_LIVING, ACCESS_CENT_BAR)
 	assignment = JOB_CENTCOM_BARTENDER
+	big_pointer = FALSE
 
 /// Trim for Centcom Medical Officers.
 /datum/id_trim/centcom/medical_officer
@@ -62,6 +75,7 @@
 /// Trim for Centcom Specops Officers. All Centcom and Station Access.
 /datum/id_trim/centcom/specops_officer
 	assignment = JOB_CENTCOM_SPECIAL_OFFICER
+	big_pointer = FALSE
 
 /datum/id_trim/centcom/specops_officer/New()
 	. = ..()
@@ -89,7 +103,7 @@
 /// Trim for Deathsquad officers. All Centcom and Station Access.
 /datum/id_trim/centcom/deathsquad
 	assignment = JOB_ERT_DEATHSQUAD
-	trim_state = "trim_ert_commander"
+	trim_state = "trim_deathcommando"
 	sechud_icon_state = SECHUD_DEATH_COMMANDO
 
 /datum/id_trim/centcom/deathsquad/New()
@@ -120,8 +134,10 @@
 /// Trim for generic ERT seccies. No universal ID card changing access.
 /datum/id_trim/centcom/ert/security
 	assignment = JOB_ERT_OFFICER
-	trim_state = "trim_ert_security"
+	trim_state = "trim_securityofficer"
+	subdepartment_color = COLOR_SECURITY_RED
 	sechud_icon_state = SECHUD_SECURITY_RESPONSE_OFFICER
+	big_pointer = FALSE
 
 /datum/id_trim/centcom/ert/security/New()
 	. = ..()
@@ -131,8 +147,10 @@
 /// Trim for generic ERT engineers. No universal ID card changing access.
 /datum/id_trim/centcom/ert/engineer
 	assignment = JOB_ERT_ENGINEER
-	trim_state = "trim_ert_engineering"
+	trim_state = "trim_stationengineer"
+	subdepartment_color = COLOR_ENGINEERING_ORANGE
 	sechud_icon_state = SECHUD_ENGINEERING_RESPONSE_OFFICER
+	big_pointer = FALSE
 
 /datum/id_trim/centcom/ert/engineer/New()
 	. = ..()
@@ -142,8 +160,10 @@
 /// Trim for generic ERT medics. No universal ID card changing access.
 /datum/id_trim/centcom/ert/medical
 	assignment = JOB_ERT_MEDICAL_DOCTOR
-	trim_state = "trim_ert_medical"
+	trim_state = "trim_medicaldoctor"
+	subdepartment_color = COLOR_MEDICAL_BLUE
 	sechud_icon_state = SECHUD_MEDICAL_RESPONSE_OFFICER
+	big_pointer = FALSE
 
 /datum/id_trim/centcom/ert/medical/New()
 	. = ..()
@@ -153,8 +173,10 @@
 /// Trim for generic ERT chaplains. No universal ID card changing access.
 /datum/id_trim/centcom/ert/chaplain
 	assignment = JOB_ERT_CHAPLAIN
-	trim_state = "trim_ert_religious"
+	trim_state = "trim_chaplain"
+	subdepartment_color = COLOR_SERVICE_LIME
 	sechud_icon_state = SECHUD_RELIGIOUS_RESPONSE_OFFICER
+	big_pointer = FALSE
 
 /datum/id_trim/centcom/ert/chaplain/New()
 	. = ..()
@@ -165,7 +187,9 @@
 /datum/id_trim/centcom/ert/janitor
 	assignment = JOB_ERT_JANITOR
 	trim_state = "trim_ert_janitor"
+	subdepartment_color = COLOR_SERVICE_LIME
 	sechud_icon_state = SECHUD_JANITORIAL_RESPONSE_OFFICER
+	big_pointer = FALSE
 
 /datum/id_trim/centcom/ert/janitor/New()
 	. = ..()
@@ -175,10 +199,20 @@
 /// Trim for generic ERT clowns. No universal ID card changing access.
 /datum/id_trim/centcom/ert/clown
 	assignment = JOB_ERT_CLOWN
-	trim_state = "trim_ert_entertainment"
+	trim_state = "trim_clown"
+	subdepartment_color = COLOR_MAGENTA
 	sechud_icon_state = SECHUD_ENTERTAINMENT_RESPONSE_OFFICER
+	big_pointer = FALSE
 
 /datum/id_trim/centcom/ert/clown/New()
 	. = ..()
 
 	access = list(ACCESS_CENT_GENERAL, ACCESS_CENT_LIVING) | (SSid_access.get_region_access_list(list(REGION_ALL_STATION)) - ACCESS_CHANGE_IDS)
+
+/datum/id_trim/centcom/ert/militia
+	assignment = "Frontier Militia"
+	big_pointer = FALSE
+
+/datum/id_trim/centcom/ert/militia/general
+	assignment = "Frontier Militia General"
+	big_pointer = TRUE

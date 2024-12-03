@@ -22,9 +22,9 @@
 
 	target.orbiters = src
 	if(ismovable(target))
-		tracker = new(target, CALLBACK(src, .proc/move_react))
+		tracker = new(target, CALLBACK(src, PROC_REF(move_react)))
 
-	RegisterSignal(parent, COMSIG_MOVABLE_UPDATE_GLIDE_SIZE, .proc/orbiter_glide_size_update)
+	RegisterSignal(parent, COMSIG_MOVABLE_UPDATE_GLIDE_SIZE, PROC_REF(orbiter_glide_size_update))
 
 /datum/component/orbiter/UnregisterFromParent()
 	UnregisterSignal(parent, COMSIG_MOVABLE_UPDATE_GLIDE_SIZE)
@@ -51,15 +51,15 @@
 		incoming_orbiter.orbiting = src
 		// It is important to transfer the signals so we don't get locked to the new orbiter component for all time
 		newcomp.UnregisterSignal(incoming_orbiter, COMSIG_MOVABLE_MOVED)
-		RegisterSignal(incoming_orbiter, COMSIG_MOVABLE_MOVED, .proc/orbiter_move_react)
+		RegisterSignal(incoming_orbiter, COMSIG_MOVABLE_MOVED, PROC_REF(orbiter_move_react))
 
 	orbiter_list += newcomp.orbiter_list
 	newcomp.orbiter_list = null
 
-/datum/component/orbiter/PostTransfer()
-	if(!isatom(parent) || isarea(parent) || !get_turf(parent))
+/datum/component/orbiter/PostTransfer(datum/new_parent)
+	if(!isatom(parent) || isarea(new_parent) || !get_turf(new_parent))
 		return COMPONENT_INCOMPATIBLE
-	move_react(parent)
+	move_react(new_parent)
 
 /datum/component/orbiter/proc/begin_orbit(atom/movable/orbiter, radius, clockwise, rotation_speed, rotation_segments, pre_rotation)
 	if(orbiter.orbiting)
@@ -71,7 +71,7 @@
 	orbiter.orbiting = src
 
 	ADD_TRAIT(orbiter, TRAIT_NO_FLOATING_ANIM, ORBITING_TRAIT)
-	RegisterSignal(orbiter, COMSIG_MOVABLE_MOVED, .proc/orbiter_move_react)
+	RegisterSignal(orbiter, COMSIG_MOVABLE_MOVED, PROC_REF(orbiter_move_react))
 
 	SEND_SIGNAL(parent, COMSIG_ATOM_ORBIT_BEGIN, orbiter)
 
@@ -119,6 +119,10 @@
 		var/mob/orbiter_mob = orbiter
 		orbiter_mob.updating_glide_size = TRUE
 		orbiter_mob.glide_size = 8
+
+		if(isobserver(orbiter))
+			var/mob/dead/observer/ghostie = orbiter
+			ghostie.orbiting_ref = null
 
 	REMOVE_TRAIT(orbiter, TRAIT_NO_FLOATING_ANIM, ORBITING_TRAIT)
 

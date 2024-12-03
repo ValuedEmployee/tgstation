@@ -40,7 +40,7 @@
 
 /obj/machinery/research/anomaly_refinery/Initialize(mapload)
 	. = ..()
-	RegisterSignal(src, COMSIG_ATOM_INTERNAL_EXPLOSION, .proc/check_test)
+	RegisterSignal(src, COMSIG_ATOM_INTERNAL_EXPLOSION, PROC_REF(check_test))
 
 /obj/machinery/research/anomaly_refinery/examine_more(mob/user)
 	. = ..()
@@ -60,10 +60,12 @@
  * * anomaly_type - anomaly type define
  */
 /obj/machinery/research/anomaly_refinery/proc/get_required_radius(anomaly_type)
+	if(!SSresearch.is_core_available(anomaly_type))
+		return //return null
+
 	var/already_made = SSresearch.created_anomaly_types[anomaly_type]
 	var/hard_limit = SSresearch.anomaly_hard_limit_by_type[anomaly_type]
-	if(already_made >= hard_limit)
-		return //return null
+
 	// my crappy autoscale formula
 	// linear scaling.
 	var/radius_span = MAX_RADIUS_REQUIRED - MIN_RADIUS_REQUIRED
@@ -85,6 +87,7 @@
 		var/obj/item/raw_anomaly_core/raw_core = tool
 		if(!get_required_radius(raw_core.anomaly_type))
 			say("Unfortunately, due to diminishing supplies of condensed anomalous matter, [raw_core] and any cores of its type are no longer of a sufficient quality level to be compressed into a working core.")
+			return
 		inserted_core = raw_core
 		to_chat(user, span_notice("You insert [raw_core] into [src]."))
 		return
@@ -109,7 +112,7 @@
 /obj/machinery/research/anomaly_refinery/wrench_act(mob/living/user, obj/item/tool)
 	. = ..()
 	default_unfasten_wrench(user, tool)
-	return TOOL_ACT_TOOLTYPE_SUCCESS
+	return ITEM_INTERACT_SUCCESS
 
 /obj/machinery/research/anomaly_refinery/screwdriver_act(mob/living/user, obj/item/tool)
 	if(!default_deconstruction_screwdriver(user, "[base_icon_state]-off", "[base_icon_state]", tool))
@@ -125,11 +128,11 @@
 /obj/machinery/research/anomaly_refinery/emag_act(mob/user, obj/item/card/emag/emag_card)
 	. = ..()
 	if (obj_flags & EMAGGED)
-		balloon_alert(user, span_warning("already hacked!"))
+		balloon_alert(user, "already hacked!")
 		return
 
 	obj_flags |= EMAGGED
-	playsound(src, 'sound/machines/buzz-sigh.ogg', 50, vary = FALSE)
+	playsound(src, 'sound/machines/buzz/buzz-sigh.ogg', 50, vary = FALSE)
 	say("ERROR: Unauthorized firmware access.")
 	return TRUE
 
@@ -156,11 +159,11 @@
 	if (obj_flags & EMAGGED)
 		say("ERROR: An firmware issue was detected while starting a process. Running autopatcher.")
 		playsound(src, 'sound/machines/ding.ogg', 50, vary = TRUE)
-		addtimer(CALLBACK(src, .proc/error_test), 2 SECONDS, TIMER_STOPPABLE | TIMER_UNIQUE | TIMER_NO_HASH_WAIT) // Synced with the sound.
+		addtimer(CALLBACK(src, PROC_REF(error_test)), 2 SECONDS, TIMER_STOPPABLE | TIMER_UNIQUE | TIMER_NO_HASH_WAIT) // Synced with the sound.
 		return
 
 	inserted_bomb.toggle_valve(tank_to_target)
-	timeout_timer = addtimer(CALLBACK(src, .proc/timeout_test), COMPRESSION_TEST_TIME, TIMER_STOPPABLE | TIMER_UNIQUE | TIMER_NO_HASH_WAIT)
+	timeout_timer = addtimer(CALLBACK(src, PROC_REF(timeout_test)), COMPRESSION_TEST_TIME, TIMER_STOPPABLE | TIMER_UNIQUE | TIMER_NO_HASH_WAIT)
 	return
 
 /**
@@ -168,14 +171,14 @@
  * Triggered by attempting to operate an emagged anomaly refinery.
  */
 /obj/machinery/research/anomaly_refinery/proc/error_test()
-	message_admins("[src] was emagged and ejected a TTV")
-	investigate_log("was emagged and ejected a TTV", INVESTIGATE_RESEARCH)
+	message_admins("[src] was emagged and ejected a TTV.")
+	investigate_log("was emagged and ejected a TTV.", INVESTIGATE_RESEARCH)
 	obj_flags &= ~EMAGGED
 
 	say("Issue resolved. Have a nice day!")
 	inserted_bomb.toggle_valve(tank_to_target)
 	eject_bomb(force = TRUE)
-	timeout_timer = addtimer(CALLBACK(src, .proc/timeout_test), COMPRESSION_TEST_TIME, TIMER_STOPPABLE | TIMER_UNIQUE | TIMER_NO_HASH_WAIT) // Actually start the test so they can't just put the bomb back in.
+	timeout_timer = addtimer(CALLBACK(src, PROC_REF(timeout_test)), COMPRESSION_TEST_TIME, TIMER_STOPPABLE | TIMER_UNIQUE | TIMER_NO_HASH_WAIT) // Actually start the test so they can't just put the bomb back in.
 
 /**
  * Ends a compression test.
@@ -294,7 +297,7 @@
 		return FALSE
 	tank_to_target = (tank_to_target == inserted_bomb.tank_one) ? inserted_bomb.tank_two : inserted_bomb.tank_one
 
-/obj/machinery/research/anomaly_refinery/on_deconstruction()
+/obj/machinery/research/anomaly_refinery/on_deconstruction(disassembled)
 	eject_bomb()
 	eject_core()
 	return ..()
@@ -312,7 +315,7 @@
 		ui = new(user, src, "AnomalyRefinery")
 		ui.open()
 
-/obj/machinery/research/anomaly_refinery/ui_act(action, list/params)
+/obj/machinery/research/anomaly_refinery/ui_act(action, list/params, datum/tgui/ui, datum/ui_state/state)
 	. = ..()
 	if (.)
 		return
@@ -355,3 +358,4 @@
 
 #undef MAX_RADIUS_REQUIRED
 #undef MIN_RADIUS_REQUIRED
+#undef COMPRESSION_TEST_TIME

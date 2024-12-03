@@ -1,5 +1,6 @@
 /obj/item/delivery
-	icon = 'icons/obj/storage.dmi'
+	icon = 'icons/obj/storage/wrapping.dmi'
+	inhand_icon_state = "deliverypackage"
 	var/giftwrapped = 0
 	var/sort_tag = 0
 	var/obj/item/paper/note
@@ -7,14 +8,14 @@
 
 /obj/item/delivery/Initialize(mapload)
 	. = ..()
-	RegisterSignal(src, COMSIG_MOVABLE_DISPOSING, .proc/disposal_handling)
+	RegisterSignal(src, COMSIG_MOVABLE_DISPOSING, PROC_REF(disposal_handling))
 
 /**
  * Initial check if manually unwrapping
  */
-/obj/item/delivery/proc/attempt_pre_unwrap_contents(mob/user)
+/obj/item/delivery/proc/attempt_pre_unwrap_contents(mob/user, time = 1.5 SECONDS)
 	to_chat(user, span_notice("You start to unwrap the package..."))
-	return do_after(user, 15, target = user)
+	return do_after(user, time, target = user)
 
 /**
  * Signals for unwrapping.
@@ -28,11 +29,14 @@
 /**
  * Effects after completing unwrapping
  */
-/obj/item/delivery/proc/post_unwrap_contents(mob/user)
+/obj/item/delivery/proc/post_unwrap_contents(mob/user, rip_open = TRUE)
 	var/turf/turf_loc = get_turf(user || src)
-	playsound(loc, 'sound/items/poster_ripped.ogg', 50, TRUE)
-	new /obj/effect/decal/cleanable/wrapping(turf_loc)
-
+	if(rip_open)
+		playsound(loc, 'sound/items/poster/poster_ripped.ogg', 50, TRUE)
+		new /obj/effect/decal/cleanable/wrapping(turf_loc)
+	else
+		playsound(loc, 'sound/items/box_cut.ogg', 50, TRUE)
+		new /obj/item/stack/package_wrap(turf_loc, 1)
 	for(var/atom/movable/movable_content as anything in contents)
 		movable_content.forceMove(turf_loc)
 
@@ -47,23 +51,22 @@
 		if(EXPLODE_LIGHT)
 			SSexplosions.low_mov_atom += contents
 
-/obj/item/delivery/deconstruct()
+/obj/item/delivery/atom_deconstruct(dissambled = TRUE)
 	unwrap_contents()
 	post_unwrap_contents()
-	return ..()
 
 /obj/item/delivery/examine(mob/user)
 	. = ..()
 	if(note)
 		if(!in_range(user, src))
-			. += "There's a [note.name] attached to it. You can't read it from here."
+			. += span_info("There's a [EXAMINE_HINT(note.name)] attached to it. You can't read it from here.")
 		else
-			. += "There's a [note.name] attached to it..."
+			. += span_info("There's a [EXAMINE_HINT(note.name)] attached to it...")
 			. += note.examine(user)
 	if(sticker)
-		. += "There's a barcode attached to the side."
+		. += span_notice("There's a [EXAMINE_HINT("barcode")] attached to the side. The package is marked for [EXAMINE_HINT("export.")]")
 	if(sort_tag)
-		. += "There's a sorting tag with the destination set to [GLOB.TAGGERLOCATIONS[sort_tag]]."
+		. += span_notice("There's a [EXAMINE_HINT("sorting tag")] with the destination set to [EXAMINE_HINT("[GLOB.TAGGERLOCATIONS[sort_tag]].")]")
 
 /obj/item/delivery/proc/disposal_handling(disposal_source, obj/structure/disposalholder/disposal_holder, obj/machinery/disposal/disposal_machine, hasmob)
 	SIGNAL_HANDLER
@@ -76,10 +79,10 @@
 		movable_loc.relay_container_resist_act(user, object)
 		return
 	to_chat(user, span_notice("You lean on the back of [object] and start pushing to rip the wrapping around it."))
-	if(do_after(user, 50, target = object))
+	if(do_after(user, 5 SECONDS, target = object))
 		if(!user || user.stat != CONSCIOUS || user.loc != object || object.loc != src)
 			return
-		to_chat(user, span_notice("You successfully removed [object]'s wrapping !"))
+		to_chat(user, span_notice("You successfully removed [object]'s wrapping!"))
 		object.forceMove(loc)
 		unwrap_contents()
 		post_unwrap_contents(user)
@@ -98,7 +101,7 @@
 	if(note)
 		. += "[base_icon_state]_note"
 	if(sticker)
-		. += "[base_icon_state]_tag"
+		. += "[base_icon_state]_barcode"
 
 /obj/item/delivery/attackby(obj/item/item, mob/user, params)
 	if(istype(item, /obj/item/dest_tagger))
@@ -108,17 +111,18 @@
 			var/tag = uppertext(GLOB.TAGGERLOCATIONS[dest_tagger.currTag])
 			to_chat(user, span_notice("*[tag]*"))
 			sort_tag = dest_tagger.currTag
-			playsound(loc, 'sound/machines/twobeep_high.ogg', 100, TRUE)
+			playsound(loc, 'sound/machines/beep/twobeep_high.ogg', 100, TRUE)
 			update_appearance()
-	else if(istype(item, /obj/item/pen))
+	else if(IS_WRITING_UTENSIL(item))
 		if(!user.can_write(item))
 			return
 		var/str = tgui_input_text(user, "Label text?", "Set label", max_length = MAX_NAME_LEN)
-		if(!user.canUseTopic(src, BE_CLOSE))
+		if(!user.can_perform_action(src))
 			return
 		if(!str || !length(str))
 			to_chat(user, span_warning("Invalid text!"))
 			return
+		playsound(src, SFX_WRITING_PEN, 50, TRUE, SHORT_RANGE_SOUND_EXTRARANGE, SOUND_FALLOFF_EXPONENT + 3, ignore_walls = FALSE)
 		user.visible_message(span_notice("[user] labels [src] as [str]."))
 		name = "[name] ([str])"
 
@@ -127,7 +131,7 @@
 		if(wrapping_paper.use(3))
 			user.visible_message(span_notice("[user] wraps the package in festive paper!"))
 			giftwrapped = TRUE
-			greyscale_config = text2path("/datum/greyscale_config/[icon_state]")
+			greyscale_config = text2path("/datum/greyscale_config/gift[icon_state]")
 			set_greyscale(colors = wrapping_paper.greyscale_colors)
 			update_appearance()
 		else
@@ -144,8 +148,10 @@
 		note = item
 		update_appearance()
 
-	else if(istype(item, /obj/item/sales_tagger))
-		var/obj/item/sales_tagger/sales_tagger = item
+	else if(istype(item, /obj/item/universal_scanner))
+		var/obj/item/universal_scanner/sales_tagger = item
+		if(sales_tagger.scanning_mode != SCAN_SALES_TAG)
+			return
 		if(sticker)
 			to_chat(user, span_warning("This package already has a barcode attached!"))
 			return
@@ -185,6 +191,17 @@
 			wrapped_item.AddComponent(/datum/component/pricetag, sticker.payments_acc, sticker.cut_multiplier)
 		update_appearance()
 
+	else if(istype(item, /obj/item/boxcutter))
+		var/obj/item/boxcutter/boxcutter_item = item
+		if(HAS_TRAIT(boxcutter_item, TRAIT_TRANSFORM_ACTIVE))
+			if(!attempt_pre_unwrap_contents(user, time = 0.5 SECONDS))
+				return
+			unwrap_contents()
+			balloon_alert(user, "cutting open package...")
+			post_unwrap_contents(user, rip_open = FALSE)
+		else
+			balloon_alert(user, "prime the boxcutter!")
+
 	else
 		return ..()
 
@@ -200,6 +217,7 @@
 	layer = BELOW_OBJ_LAYER
 	pass_flags_self = PASSSTRUCTURE
 	interaction_flags_atom = INTERACT_ATOM_ATTACK_HAND
+	w_class = WEIGHT_CLASS_GIGANTIC
 
 /obj/item/delivery/big/interact(mob/user)
 	if(!attempt_pre_unwrap_contents(user))
@@ -236,21 +254,21 @@
 
 	unwrap_contents()
 	post_unwrap_contents(user)
-	return COMPONENT_CANCEL_ATTACK_CHAIN
+	return ITEM_INTERACT_BLOCKING
 
 /obj/item/dest_tagger
 	name = "destination tagger"
 	desc = "Used to set the destination of properly wrapped packages."
-	icon = 'icons/obj/device.dmi'
-	icon_state = "cargotagger"
+	icon = 'icons/obj/devices/tool.dmi'
+	icon_state = "cargo tagger"
 	worn_icon_state = "cargotagger"
 	var/currTag = 0 //Destinations are stored in code\globalvars\lists\flavor_misc.dm
 	var/locked_destination = FALSE //if true, users can't open the destination tag window to prevent changing the tagger's current destination
 	w_class = WEIGHT_CLASS_TINY
 	inhand_icon_state = "electronic"
-	lefthand_file = 'icons/mob/inhands/misc/devices_lefthand.dmi'
-	righthand_file = 'icons/mob/inhands/misc/devices_righthand.dmi'
-	flags_1 = CONDUCT_1
+	lefthand_file = 'icons/mob/inhands/items/devices_lefthand.dmi'
+	righthand_file = 'icons/mob/inhands/items/devices_righthand.dmi'
+	obj_flags = CONDUCTS_ELECTRICITY
 	slot_flags = ITEM_SLOT_BELT
 
 /obj/item/dest_tagger/borg
@@ -263,7 +281,7 @@
 		to_chat(user, span_notice("*HELL*"))//lizard nerf
 	else
 		to_chat(user, span_notice("*HEAVEN*"))
-	playsound(src, 'sound/machines/twobeep_high.ogg', 100, TRUE)
+	playsound(src, 'sound/machines/beep/twobeep_high.ogg', 100, TRUE)
 	return BRUTELOSS
 
 /** Standard TGUI actions */
@@ -293,7 +311,7 @@
 	return data
 
 /** User clicks a button on the tagger */
-/obj/item/dest_tagger/ui_act(action, params)
+/obj/item/dest_tagger/ui_act(action, list/params, datum/tgui/ui, datum/ui_state/state)
 	. = ..()
 	if(.)
 		return
@@ -308,12 +326,12 @@
 /obj/item/sales_tagger
 	name = "sales tagger"
 	desc = "A scanner that lets you tag wrapped items for sale, splitting the profit between you and cargo."
-	icon = 'icons/obj/device.dmi'
-	icon_state = "salestagger"
+	icon = 'icons/obj/devices/scanner.dmi'
+	icon_state = "sales tagger"
 	worn_icon_state = "salestagger"
 	inhand_icon_state = "electronic"
-	lefthand_file = 'icons/mob/inhands/misc/devices_lefthand.dmi'
-	righthand_file = 'icons/mob/inhands/misc/devices_righthand.dmi'
+	lefthand_file = 'icons/mob/inhands/items/devices_lefthand.dmi'
+	righthand_file = 'icons/mob/inhands/items/devices_righthand.dmi'
 	w_class = WEIGHT_CLASS_TINY
 	slot_flags = ITEM_SLOT_BELT
 	///The account which is receiving the split profits.
@@ -336,7 +354,7 @@
 
 /obj/item/sales_tagger/attackby(obj/item/item, mob/living/user, params)
 	. = ..()
-	if(istype(item, /obj/item/card/id))
+	if(isidcard(item))
 		var/obj/item/card/id/potential_acc = item
 		if(potential_acc.registered_account)
 			if(payments_acc == potential_acc.registered_account)
@@ -379,25 +397,15 @@
 	new_barcode.cut_multiplier = cut_multiplier		// Also the registered percent cut.
 	user.put_in_hands(new_barcode)
 
-/obj/item/sales_tagger/CtrlClick(mob/user)
-	. = ..()
+/obj/item/sales_tagger/item_ctrl_click(mob/user)
 	payments_acc = null
 	to_chat(user, span_notice("You clear the registered account."))
+	return CLICK_ACTION_SUCCESS
 
-/obj/item/sales_tagger/AltClick(mob/user)
-	. = ..()
+/obj/item/sales_tagger/click_alt(mob/user)
 	var/potential_cut = input("How much would you like to pay out to the registered card?","Percentage Profit ([round(cut_min*100)]% - [round(cut_max*100)]%)") as num|null
 	if(!potential_cut)
 		cut_multiplier = initial(cut_multiplier)
 	cut_multiplier = clamp(round(potential_cut/100, cut_min), cut_min, cut_max)
 	to_chat(user, span_notice("[round(cut_multiplier*100)]% profit will be received if a package with a barcode is sold."))
-
-/obj/item/barcode
-	name = "barcode tag"
-	desc = "A tiny tag, associated with a crewmember's account. Attach to a wrapped item to give that account a portion of the wrapped item's profit."
-	icon = 'icons/obj/bureaucracy.dmi'
-	icon_state = "barcode"
-	w_class = WEIGHT_CLASS_TINY
-	///All values inheirited from the sales tagger it came from.
-	var/datum/bank_account/payments_acc = null
-	var/cut_multiplier = 0.5
+	return CLICK_ACTION_SUCCESS

@@ -1,64 +1,52 @@
 /datum/vote/map_vote
 	name = "Map"
+	default_message = "Vote for next round's map!"
+	count_method = VOTE_COUNT_METHOD_SINGLE
+	winner_method = VOTE_WINNER_METHOD_NONE
+	display_statistics = FALSE
 
 /datum/vote/map_vote/New()
 	. = ..()
-
-	default_choices = list()
-
-	// Fill in our default choices with all of the maps in our map config, if they are votable and not blocked.
-	var/list/maps = shuffle(global.config.maplist)
-	for(var/map in maps)
-		var/datum/map_config/possible_config = config.maplist[map]
-		if(!possible_config.votable || (possible_config.map_name in SSpersistence.blocked_maps))
-			continue
-
-		default_choices += possible_config.map_name
+	default_choices = SSmap_vote.get_valid_map_vote_choices()
 
 /datum/vote/map_vote/create_vote()
-	. = ..()
-
-	// Before we create a vote, remove all maps from our choices that are outside of our population range.
-	// Note that this can result in zero remaining choices for our vote, which is not ideal (but technically fine).
-	for(var/map in choices)
-		var/datum/map_config/possible_config = config.maplist[map]
-		if(possible_config.config_min_users > 0 && GLOB.clients.len < possible_config.config_min_users)
-			choices -= map
-
-		else if(possible_config.config_max_users > 0 && GLOB.clients.len > possible_config.config_max_users)
-			choices -= map
-
-/datum/vote/map_vote/toggle_votable(mob/toggler)
-	if(!toggler)
-		CRASH("[type] wasn't passed a \"toggler\" mob to toggle_votable.")
-	if(!check_rights_for(toggler.client, R_ADMIN))
-		return FALSE
-
-	CONFIG_SET(flag/allow_vote_map, !CONFIG_GET(flag/allow_vote_map))
-	return TRUE
-
-/datum/vote/map_vote/is_config_enabled()
-	return CONFIG_GET(flag/allow_vote_map)
-
-/datum/vote/map_vote/can_be_initiated(mob/by_who, forced = FALSE)
 	. = ..()
 	if(!.)
 		return FALSE
 
-	if(forced)
-		return TRUE
-
-	if(!CONFIG_GET(flag/allow_vote_map))
-		if(by_who)
-			to_chat(by_who, span_warning("Map voting is disabled."))
+	if(length(choices) == 1) // Only one choice, no need to vote. Let's just auto-rotate it to the only remaining map because it would just happen anyways.
+		var/datum/map_config/change_me_out = global.config.maplist[choices[1]]
+		finalize_vote(choices[1])// voted by not voting, very sad.
+		to_chat(world, span_boldannounce("The map vote has been skipped because there is only one map left to vote for. \
+			The map has been changed to [change_me_out.map_name]."))
 		return FALSE
-
-	if(SSmapping.map_voted)
-		if(by_who)
-			to_chat(by_who, span_warning("The next map has already been selected."))
+	if(length(choices) == 0)
+		to_chat(world, span_boldannounce("A map vote was called, but there are no maps to vote for! \
+			Players, complain to the admins. Admins, complain to the coders."))
 		return FALSE
 
 	return TRUE
+
+/datum/vote/map_vote/toggle_votable()
+	CONFIG_SET(flag/allow_vote_map, !CONFIG_GET(flag/allow_vote_map))
+
+/datum/vote/map_vote/is_config_enabled()
+	return CONFIG_GET(flag/allow_vote_map)
+
+/datum/vote/map_vote/can_be_initiated(forced)
+	. = ..()
+	if(. != VOTE_AVAILABLE)
+		return .
+
+	var/num_choices = length(default_choices)
+	if(num_choices <= 1)
+		return "There [num_choices == 1 ? "is only one map" : "are no maps"] to choose from."
+	if(SSmap_vote.next_map_config)
+		return "The next map has already been selected."
+	return VOTE_AVAILABLE
+
+/datum/vote/map_vote/get_result_text(list/all_winners, real_winner, list/non_voters)
+	return null
 
 /datum/vote/map_vote/get_vote_result(list/non_voters)
 	// Even if we have default no vote off,
@@ -79,9 +67,4 @@
 	return ..()
 
 /datum/vote/map_vote/finalize_vote(winning_option)
-	var/datum/map_config/winning_map = global.config.maplist[winning_option]
-	if(!istype(winning_map))
-		CRASH("[type] wasn't passed a valid winning map choice. (Got: [winning_option || "null"] - [winning_map || "null"])")
-
-	SSmapping.changemap(winning_map)
-	SSmapping.map_voted = TRUE
+	SSmap_vote.finalize_map_vote(src)

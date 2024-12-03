@@ -5,7 +5,7 @@
 	hijack_speed = 2 //You literally are here to do nothing else. Might as well be fast about it.
 	suicide_cry = "HAHAHAHAHA!!"
 
-/datum/antagonist/wishgranter/proc/forge_objectives()
+/datum/antagonist/wishgranter/forge_objectives()
 	var/datum/objective/hijack/hijack = new
 	hijack.owner = owner
 	objectives += hijack
@@ -27,5 +27,5 @@
 		return
 	H.dna.add_mutation(/datum/mutation/human/hulk)
 	H.dna.add_mutation(/datum/mutation/human/xray)
-	H.dna.add_mutation(/datum/mutation/human/pressure_adaptation)
+	H.dna.add_mutation(/datum/mutation/human/adaptation/pressure)
 	H.dna.add_mutation(/datum/mutation/human/telekinesis)

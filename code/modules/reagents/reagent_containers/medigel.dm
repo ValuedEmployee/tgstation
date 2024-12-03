@@ -1,7 +1,7 @@
 /obj/item/reagent_containers/medigel
 	name = "medical gel"
 	desc = "A medical gel applicator bottle, designed for precision application, with an unscrewable cap."
-	icon = 'icons/obj/chemical.dmi'
+	icon = 'icons/obj/medical/chemical.dmi'
 	icon_state = "medigel"
 	inhand_icon_state = "spraycan"
 	worn_icon_state = "spraycan"
@@ -32,6 +32,7 @@
 		"Purple" = "medigel_purple"
 	)
 
+
 /obj/item/reagent_containers/medigel/mode_change_message(mob/user)
 	var/squirt_mode = amount_per_transfer_from_this == initial(amount_per_transfer_from_this)
 	to_chat(user, span_notice("You will now apply the medigel's contents in [squirt_mode ? "extended sprays":"short bursts"]. You'll now use [amount_per_transfer_from_this] units per use."))
@@ -44,7 +45,7 @@
 	if(M == user)
 		M.visible_message(span_notice("[user] attempts to [apply_method] [src] on [user.p_them()]self."))
 		if(self_delay)
-			if(!do_mob(user, M, self_delay))
+			if(!do_after(user, self_delay, M))
 				return
 			if(!reagents || !reagents.total_volume)
 				return
@@ -54,7 +55,7 @@
 		log_combat(user, M, "attempted to apply", src, reagents.get_reagent_log_string())
 		M.visible_message(span_danger("[user] attempts to [apply_method] [src] on [M]."), \
 							span_userdanger("[user] attempts to [apply_method] [src] on you."))
-		if(!do_mob(user, M, CHEM_INTERACT_DELAY(3 SECONDS, user)))
+		if(!do_after(user, CHEM_INTERACT_DELAY(3 SECONDS, user), M))
 			return
 		if(!reagents || !reagents.total_volume)
 			return
@@ -67,7 +68,7 @@
 	else
 		log_combat(user, M, "applied", src, reagents.get_reagent_log_string())
 		playsound(src, 'sound/effects/spray.ogg', 30, TRUE, -6)
-		reagents.trans_to(M, amount_per_transfer_from_this, transfered_by = user, methods = apply_type)
+		reagents.trans_to(M, amount_per_transfer_from_this, transferred_by = user, methods = apply_type)
 	return
 
 /obj/item/reagent_containers/medigel/libital

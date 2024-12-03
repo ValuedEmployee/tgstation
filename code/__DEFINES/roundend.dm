@@ -11,8 +11,6 @@
 #define STATION_EVACUATED 5
 /// The blob has reached critical mass and overtaken the station
 #define BLOB_WIN 8
-/// The station's nuke was detonated destroying the blob
-#define BLOB_NUKE 9
 /// The blob was destroyed by the crew
 #define BLOB_DESTROYED 10
 /// The cult managed to escape alive on the shuttle
@@ -33,13 +31,9 @@
 #define REVS_LOSE 18
 /// The wizard was killed by the crew
 #define WIZARD_KILLED 19
-/// The station was destroyed by it's own self-destruct nuclear device
+/// The station was destroyed by its own self-destruct nuclear device
 #define STATION_NUKED 20
 /// The station was destroyed by the supermatter cascade
 #define SUPERMATTER_CASCADE 21
 /// The emergency shuttle was successfully hijacked
 #define SHUTTLE_HIJACK 24
-/// The gangs on the station were thwarted
-#define GANG_DESTROYED 25 // Looks like it was deprecated at some point - Jan 2022
-/// The gangs on the station still exist
-#define GANG_OPERATING 26

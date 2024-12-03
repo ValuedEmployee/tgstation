@@ -9,9 +9,21 @@
 	ammo_x_offset = 3
 	dual_wield_spread = 60
 
+/obj/item/gun/energy/e_gun/Initialize(mapload)
+	. = ..()
+	// Only actual eguns can be converted
+	if(type != /obj/item/gun/energy/e_gun)
+		return
+	var/static/list/slapcraft_recipe_list = list(/datum/crafting_recipe/advancedegun, /datum/crafting_recipe/tempgun, /datum/crafting_recipe/beam_rifle)
+
+	AddElement(
+		/datum/element/slapcrafting,\
+		slapcraft_recipes = slapcraft_recipe_list,\
+	)
+
 /obj/item/gun/energy/e_gun/add_seclight_point()
 	AddComponent(/datum/component/seclite_attachable, \
-		light_overlay_icon = 'icons/obj/guns/flashlights.dmi', \
+		light_overlay_icon = 'icons/obj/weapons/guns/flashlights.dmi', \
 		light_overlay = "flight", \
 		overlay_x = 15, \
 		overlay_y = 10)
@@ -22,7 +34,7 @@
 	icon_state = "mini"
 	inhand_icon_state = "gun"
 	w_class = WEIGHT_CLASS_SMALL
-	cell_type = /obj/item/stock_parts/cell/mini_egun
+	cell_type = /obj/item/stock_parts/power_store/cell/mini_egun
 	ammo_x_offset = 2
 	charge_sections = 3
 	single_shot_type_overlay = FALSE
@@ -32,7 +44,7 @@
 	AddComponent(/datum/component/seclite_attachable, \
 		starting_light = new /obj/item/flashlight/seclite(src), \
 		is_light_removable = FALSE, \
-		light_overlay_icon = 'icons/obj/guns/flashlights.dmi', \
+		light_overlay_icon = 'icons/obj/weapons/guns/flashlights.dmi', \
 		light_overlay = "mini-light", \
 		overlay_x = 19, \
 		overlay_y = 13)
@@ -58,21 +70,23 @@
 	icon_state = "decloner"
 	//You have no icons for energy types, you're a decloner
 	modifystate = FALSE
+	gun_flags = NOT_A_REAL_GUN
 
 /obj/item/gun/energy/e_gun/hos
 	name = "\improper X-01 MultiPhase Energy Gun"
 	desc = "This is an expensive, modern recreation of an antique laser gun. This gun has several unique firemodes, but lacks the ability to recharge over time."
-	cell_type = /obj/item/stock_parts/cell/hos_gun
+	cell_type = /obj/item/stock_parts/power_store/cell/hos_gun
 	icon_state = "hoslaser"
 	w_class = WEIGHT_CLASS_NORMAL
 	force = 10
 	ammo_type = list(/obj/item/ammo_casing/energy/disabler/hos, /obj/item/ammo_casing/energy/laser/hos, /obj/item/ammo_casing/energy/ion/hos)
 	ammo_x_offset = 4
 	resistance_flags = INDESTRUCTIBLE | LAVA_PROOF | FIRE_PROOF | ACID_PROOF
+	flags_1 = PREVENT_CONTENTS_EXPLOSION_1
 
 /obj/item/gun/energy/e_gun/dragnet
 	name = "\improper DRAGnet"
-	desc = "The \"Dynamic Rapid-Apprehension of the Guilty\" net is a revolution in law enforcement technology."
+	desc = "The \"Dynamic Rapid-Apprehension of the Guilty\" net is a revolution in law enforcement technology. Can by synced with a DRAGnet beacon to set a teleport destination for snare rounds."
 	icon_state = "dragnet"
 	inhand_icon_state = "dragnet"
 	lefthand_file = 'icons/mob/inhands/weapons/guns_lefthand.dmi'
@@ -81,9 +95,34 @@
 	modifystate = FALSE
 	w_class = WEIGHT_CLASS_NORMAL
 	ammo_x_offset = 1
+	///A dragnet beacon set to be the teleport destination for snare teleport rounds.
+	var/obj/item/dragnet_beacon/linked_beacon
 
 /obj/item/gun/energy/e_gun/dragnet/add_seclight_point()
 	return
+
+/obj/item/gun/energy/e_gun/dragnet/item_interaction(mob/living/user, obj/item/tool, list/modifiers)
+	if(istype(tool, /obj/item/dragnet_beacon))
+		link_beacon(user, tool)
+
+///Sets the linked_beacon var on the dragnet, which becomes the snare round's teleport destination.
+/obj/item/gun/energy/e_gun/dragnet/proc/link_beacon(mob/living/user, obj/item/dragnet_beacon/our_beacon)
+	if(linked_beacon)
+		if(our_beacon == linked_beacon)
+			balloon_alert(user, "already synced!")
+			return
+		else
+			UnregisterSignal(linked_beacon, COMSIG_QDELETING) //You're getting overridden dude.
+
+	linked_beacon = our_beacon
+	balloon_alert(user, "beacon synced")
+	RegisterSignal(our_beacon, COMSIG_QDELETING, PROC_REF(handle_beacon_disable))
+
+///Handles clearing the linked_beacon reference in the event that it is deleted.
+/obj/item/gun/energy/e_gun/dragnet/proc/handle_beacon_disable(datum/source)
+	SIGNAL_HANDLER
+	visible_message(span_warning("A light on the [src] flashes, indicating that it is no longer linked with a DRAGnet beacon!"))
+	linked_beacon = null
 
 /obj/item/gun/energy/e_gun/dragnet/snare
 	name = "Energy Snare Launcher"
@@ -119,9 +158,9 @@
 	var/fail_tick = 0
 	var/fail_chance = 0
 
-/obj/item/gun/energy/e_gun/nuclear/process(delta_time)
+/obj/item/gun/energy/e_gun/nuclear/process(seconds_per_tick)
 	if(fail_tick > 0)
-		fail_tick -= delta_time * 0.5
+		fail_tick -= seconds_per_tick * 0.5
 	..()
 
 /obj/item/gun/energy/e_gun/nuclear/shoot_live_shot(mob/living/user, pointblank = 0, atom/pbtarget = null, message = 1)
@@ -162,3 +201,6 @@
 			. += "[icon_state]_fail_1"
 		if(151 to INFINITY)
 			. += "[icon_state]_fail_2"
+
+/obj/item/gun/energy/e_gun/lethal
+	ammo_type = list(/obj/item/ammo_casing/energy/laser, /obj/item/ammo_casing/energy/disabler)

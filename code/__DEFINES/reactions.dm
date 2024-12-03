@@ -59,45 +59,37 @@
 // - Hydrogen:
 /// The minimum temperature hydrogen combusts at.
 #define HYDROGEN_MINIMUM_BURN_TEMPERATURE FIRE_MINIMUM_TEMPERATURE_TO_EXIST
-/// The minimum thermal energy necessary for hydrogen fires to use the [HYDROGEN_OXYBURN_MULTIPLIER]. Used to prevent overpowered hydrogen/oxygen singletank bombs to moderate success.
-#define MINIMUM_HYDROGEN_OXYBURN_ENERGY 2e6
-/// A multiplier to released hydrogen fire energy when in an oxygen-rich mix.
-#define HYDROGEN_OXYBURN_MULTIPLIER 10
-/// What fraction of the oxygen content of the mix is used for the burn rate in an oxygen-poor mix.
-#define HYDROGEN_BURN_OXY_FACTOR 100
-/// What fraction of the hydrogen content of the mix is used for the burn rate in an oxygen-rich mix.
-#define HYDROGEN_BURN_H2_FACTOR 10
-/// The amount of energy released by burning one mole of hydrogen. (Before [HYDROGEN_OXYBURN_MULTIPLIER] is applied if applicable.)
-#define FIRE_HYDROGEN_ENERGY_RELEASED 2.8e5
+/// The amount of energy released by burning one mole of hydrogen.
+#define FIRE_HYDROGEN_ENERGY_RELEASED 2.8e6
+/// Multiplier for hydrogen fire with O2 moles * HYDROGEN_OXYGEN_FULLBURN for the maximum fuel consumption
+#define HYDROGEN_OXYGEN_FULLBURN 10
+/// The divisor for the maximum hydrogen burn rate. (1/2 of the hydrogen can burn in one reaction tick.)
+#define FIRE_HYDROGEN_BURN_RATE_DELTA 2
 
 // - Tritium:
 /// The minimum temperature tritium combusts at.
 #define TRITIUM_MINIMUM_BURN_TEMPERATURE FIRE_MINIMUM_TEMPERATURE_TO_EXIST
-/// The minimum thermal energy necessary for tritium fires to use the [TRITIUM_OXYBURN_MULTIPLIER]. Used to prevent overpowered tritium/oxygen singletank bombs to moderate success.
-#define MINIMUM_TRITIUM_OXYBURN_ENERGY 2e6
-/// A multiplier to all secondary tritium fire effects when in an oxygen-rich mix.
-#define TRITIUM_OXYBURN_MULTIPLIER 10
-/// What fraction of the oxygen content of the mix is used for the burn rate in an oxygen-poor mix.
-#define TRITIUM_BURN_OXY_FACTOR 100
-/// What fraction of the tritium content of the mix is used for the burn rate in an oxygen-rich mix.
-#define TRITIUM_BURN_TRIT_FACTOR 10
-/// The amount of energy released by burning one mole of tritium. (Before [TRITIUM_OXYBURN_MULTIPLIER] is applied if applicable.)
-#define FIRE_TRITIUM_ENERGY_RELEASED 2.8e5
+/// The amount of energy released by burning one mole of tritium.
+#define FIRE_TRITIUM_ENERGY_RELEASED FIRE_HYDROGEN_ENERGY_RELEASED
+/// Multiplier for TRITIUM fire with O2 moles * TRITIUM_OXYGEN_FULLBURN for the maximum fuel consumption
+#define TRITIUM_OXYGEN_FULLBURN HYDROGEN_OXYGEN_FULLBURN
+/// The divisor for the maximum tritium burn rate. (1/2 of the tritium can burn in one reaction tick.)
+#define FIRE_TRITIUM_BURN_RATE_DELTA FIRE_HYDROGEN_BURN_RATE_DELTA
 /// The minimum number of moles of trit that must be burnt for a tritium fire reaction to produce a radiation pulse. (0.01 moles trit or 10 moles oxygen to start producing rads.)
 #define TRITIUM_RADIATION_MINIMUM_MOLES 0.1
 /// The minimum released energy necessary for tritium to release radiation during combustion. (at a mix volume of [CELL_VOLUME]).
-#define TRITIUM_RADIATION_RELEASE_THRESHOLD (FIRE_TRITIUM_ENERGY_RELEASED * TRITIUM_OXYBURN_MULTIPLIER)
+#define TRITIUM_RADIATION_RELEASE_THRESHOLD (FIRE_TRITIUM_ENERGY_RELEASED)
 /// A scaling factor for the range of radiation pulses produced by tritium fires.
-#define TRITIUM_RADIATION_RANGE_DIVISOR 1.5
-/// A scaling factor for the irradiation threshold of radiation pulses produced by tritium fires.
-#define TRITIUM_RADIATION_THRESHOLD_BASE 15
+#define TRITIUM_RADIATION_RANGE_DIVISOR 0.5
+/// The threshold of the tritium combustion's radiation. Lower values means it will be able to penetrate through more structures.
+#define TRITIUM_RADIATION_THRESHOLD 0.3
 
 // - Freon:
 /// The maximum temperature freon can combust at.
 #define FREON_MAXIMUM_BURN_TEMPERATURE 283
 ///Minimum temperature allowed for the burn to go at max speed, we would have negative pressure otherwise
 #define FREON_LOWER_TEMPERATURE 60
-///Terminal temperature after wich we stop the reaction
+///Terminal temperature after which we stop the reaction
 #define FREON_TERMINAL_TEMPERATURE 20
 /// Multiplier for freonfire with O2 moles * FREON_OXYGEN_FULLBURN for the maximum fuel consumption
 #define FREON_OXYGEN_FULLBURN 10
@@ -168,7 +160,7 @@
 
 // Freon:
 /// The minimum temperature freon can form from plasma, CO2, and BZ at.
-#define FREON_FORMATION_MIN_TEMPERATURE FIRE_MINIMUM_TEMPERATURE_TO_EXIST + 100
+#define FREON_FORMATION_MIN_TEMPERATURE (FIRE_MINIMUM_TEMPERATURE_TO_EXIST + 100)
 /// The amount of energy 2.5 moles of freon forming from plasma, CO2, and BZ consumes.
 #define FREON_FORMATION_ENERGY 100
 
@@ -184,15 +176,19 @@
 #define REACTION_OPPRESSION_THRESHOLD 5
 
 // Halon:
-/// The minimum temperature required for halon to form from tritium and BZ.
-#define HALON_FORMATION_MIN_TEMPERATURE 30
-/// The maximum temperature required for halon to form from tritium and BZ.
-#define HALON_FORMATION_MAX_TEMPERATURE 55
-/// The amount of energy 4.25 moles of halon forming from tritium and BZ releases.
-#define HALON_FORMATION_ENERGY 300
+/// Energy released per mole of BZ consumed during halon formation.
+#define HALON_FORMATION_ENERGY 91232.1
 
 /// How much energy a mole of halon combusting consumes.
 #define HALON_COMBUSTION_ENERGY 2500
+/// The minimum temperature required for halon to combust.
+#define HALON_COMBUSTION_MIN_TEMPERATURE (T0C + 70)
+/// The temperature scale for halon combustion reaction rate.
+#define HALON_COMBUSTION_TEMPERATURE_SCALE (FIRE_MINIMUM_TEMPERATURE_TO_EXIST * 10)
+/// Amount of halon required to be consumed in order to release resin. This is always possible as long as there's enough gas.
+#define HALON_COMBUSTION_MINIMUM_RESIN_MOLES (0.99 * HALON_COMBUSTION_MIN_TEMPERATURE / HALON_COMBUSTION_TEMPERATURE_SCALE)
+/// The volume of the resin foam fluid when halon combusts, in turfs.
+#define HALON_COMBUSTION_RESIN_VOLUME 1
 
 // Healium:
 /// The minimum temperature healium can form from BZ and freon at.
@@ -243,9 +239,9 @@
 /// The minimum released energy necessary for proto-nitrate to release radiation when converting tritium. (With a reaction vessel volume of [CELL_VOLUME])
 #define PN_TRITIUM_CONVERSION_RAD_RELEASE_THRESHOLD 10000
 /// A scaling factor for the range of the radiation pulses generated when proto-nitrate converts tritium to hydrogen.
-#define PN_TRITIUM_RAD_RANGE_DIVISOR 1.5
-/// A scaling factor for the threshold of the radiation pulses generated when proto-nitrate converts tritium to hydrogen.
-#define PN_TRITIUM_RAD_THRESHOLD_BASE 15
+#define PN_TRITIUM_RAD_RANGE_DIVISOR 0.5
+/// The threshold of the radiation pulse released when proto-nitrate converts tritium into hydrogen. Lower values means it will be able to penetrate through more structures.
+#define PN_TRITIUM_RAD_THRESHOLD 0.3
 
 /// The minimum temperature proto-nitrate can break BZ down at.
 #define PN_BZASE_MIN_TEMP 260
@@ -257,5 +253,11 @@
 #define PN_BZASE_RAD_RELEASE_THRESHOLD 60000
 /// A scaling factor for the range of the radiation pulses generated when proto-nitrate breaks down BZ.
 #define PN_BZASE_RAD_RANGE_DIVISOR 1.5
-/// A scaling factor for the threshold of the radiation pulses generated when proto-nitrate breaks down BZ.
-#define PN_BZASE_RAD_THRESHOLD_BASE 15
+/// The threshold of the radiation pulse released when proto-nitrate breaks down BZ. Lower values means it will be able to penetrate through more structures.
+#define PN_BZASE_RAD_THRESHOLD 0.3
+/// A scaling factor for the nuclear particle production generated when proto-nitrate breaks down BZ.
+#define PN_BZASE_NUCLEAR_PARTICLE_DIVISOR 5
+/// The maximum amount of nuclear particles that can be produced from proto-nitrate breaking down BZ.
+#define PN_BZASE_NUCLEAR_PARTICLE_MAXIMUM 6
+/// How much radiation in consumed amount does a nuclear particle take from radiation when proto-nitrate breaks down BZ.
+#define PN_BZASE_NUCLEAR_PARTICLE_RADIATION_ENERGY_CONVERSION 2.5

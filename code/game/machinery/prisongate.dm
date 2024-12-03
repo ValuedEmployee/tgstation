@@ -1,14 +1,14 @@
-#define SPAM_CD 3 SECONDS
+#define SPAM_CD (3 SECONDS)
 
 /obj/machinery/prisongate
 	name = "prison gate scanner"
 	desc = "A hardlight gate with an ID scanner attached to the side. Good at deterring even the most persistent temporarily embarrassed employee."
-	icon = 'icons/obj/stationobjs.dmi'
+	icon = 'icons/obj/machines/sec.dmi'
 	icon_state = "prisongate_on"
 	/// roughly the same health/armor as an airlock
 	max_integrity = 450
 	damage_deflection = 30
-	armor = list(MELEE = 30, BULLET = 30, LASER = 20, ENERGY = 20, BOMB = 10, BIO = 0, FIRE = 80, ACID = 70)
+	armor_type = /datum/armor/machinery_prisongate
 	use_power = IDLE_POWER_USE
 	power_channel = AREA_USAGE_EQUIP
 	idle_power_usage = BASE_MACHINE_IDLE_CONSUMPTION * 0.05
@@ -17,6 +17,15 @@
 	/// dictates whether the gate barrier is up or not
 	var/gate_active = TRUE
 	COOLDOWN_DECLARE(spam_cooldown_time)
+
+/datum/armor/machinery_prisongate
+	melee = 30
+	bullet = 30
+	laser = 20
+	energy = 20
+	bomb = 10
+	fire = 80
+	acid = 70
 
 /obj/machinery/prisongate/power_change()
 	. = ..()
@@ -42,7 +51,7 @@
 		for(var/mob/living/stowaway in cargobay.contents) //nice try bub
 			if(COOLDOWN_FINISHED(src, spam_cooldown_time))
 				say("Stowaway detected in internal contents. Access denied.")
-				playsound(src, 'sound/machines/buzz-two.ogg', 50, FALSE)
+				playsound(src, 'sound/machines/buzz/buzz-two.ogg', 50, FALSE)
 				COOLDOWN_START(src, spam_cooldown_time, SPAM_CD)
 			return FALSE
 	var/mob/living/carbon/the_toucher = gate_toucher
@@ -73,7 +82,7 @@
 			return TRUE
 		if(COOLDOWN_FINISHED(src, spam_cooldown_time))
 			say("Prison ID with ongoing sentence detected. Access denied.")
-			playsound(src, 'sound/machines/buzz-two.ogg', 50, FALSE)
+			playsound(src, 'sound/machines/buzz/buzz-two.ogg', 50, FALSE)
 			COOLDOWN_START(src, spam_cooldown_time, SPAM_CD)
 		return FALSE
 	if(COOLDOWN_FINISHED(src, spam_cooldown_time))

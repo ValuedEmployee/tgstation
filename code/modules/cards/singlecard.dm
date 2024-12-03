@@ -1,10 +1,7 @@
-#define CARD_FACEDOWN 0
-#define CARD_FACEUP 1
-
 /obj/item/toy/singlecard
 	name = "card"
 	desc = "A playing card used to play card games like poker."
-	icon = 'icons/obj/playing_cards.dmi'
+	icon = 'icons/obj/toys/playing_cards.dmi'
 	icon_state = "sc_Ace of Spades_nanotrasen"
 	w_class = WEIGHT_CLASS_TINY
 	worn_icon_state = "card"
@@ -17,6 +14,7 @@
 	throw_range = 7
 	attack_verb_continuous = list("attacks")
 	attack_verb_simple = list("attack")
+	interaction_flags_click = NEED_DEXTERITY|FORBID_TELEKINESIS_REACH|ALLOW_RESTING
 	/// Artistic style of the deck
 	var/deckstyle = "nanotrasen"
 	/// If the cards in the deck have different icon states (blank and CAS decks do not)
@@ -24,7 +22,7 @@
 	/// The name of the card
 	var/cardname = "Ace of Spades"
 	/// Is the card flipped facedown (FALSE) or flipped faceup (TRUE)
-	var/flipped = FALSE
+	var/flipped = CARD_FACEDOWN
 	/// The card is blank and can be written on with a pen.
 	var/blank = FALSE
 	/// The color used to mark a card for cheating (by pens or crayons)
@@ -48,6 +46,9 @@
 		if(parent_deck.holodeck)
 			flags_1 |= HOLOGRAM_1
 			parent_deck.holodeck.spawned += src
+	if(mapload)
+		//maploaded card needs to be faceup anyways, and doing this will give it its name and appearance properly
+		Flip(CARD_FACEUP)
 
 	register_context()
 
@@ -78,7 +79,7 @@
 
 	if(istype(held_item, /obj/item/toy/cards/deck))
 		var/obj/item/toy/cards/deck/dealer_deck = held_item
-		if(dealer_deck.wielded)
+		if(HAS_TRAIT(dealer_deck, TRAIT_WIELDED))
 			context[SCREENTIP_CONTEXT_LMB] = "Deal card"
 			context[SCREENTIP_CONTEXT_RMB] = "Deal card faceup"
 			return CONTEXTUAL_SCREENTIP_SET
@@ -94,7 +95,7 @@
 		context[SCREENTIP_CONTEXT_LMB] = "Combine cards"
 		return CONTEXTUAL_SCREENTIP_SET
 
-	if(istype(held_item, /obj/item/toy/crayon) || istype(held_item, /obj/item/pen))
+	if(IS_WRITING_UTENSIL(held_item))
 		context[SCREENTIP_CONTEXT_LMB] = blank ? "Write on card" : "Mark card"
 		return CONTEXTUAL_SCREENTIP_SET
 
@@ -102,18 +103,18 @@
 
 /obj/item/toy/singlecard/suicide_act(mob/living/carbon/user)
 	user.visible_message(span_suicide("[user] is slitting [user.p_their()] wrists with \the [src]! It looks like [user.p_they()] [user.p_have()] an unlucky card!"))
-	playsound(src, 'sound/weapons/bladeslice.ogg', 50, TRUE)
+	playsound(src, 'sound/items/weapons/bladeslice.ogg', 50, TRUE)
 	return BRUTELOSS
 
 /**
  * Flips the card over
  *
  * * Arguments:
- * * orientation (optional) - Sets flipped state to CARD_FACEDOWN or CARD_FACEUP if given orientation (otherwise just invert the flipped state)
+ * * is_face_up (optional) - Sets flipped state to CARD_FACEDOWN or CARD_FACEUP if given (otherwise just invert the flipped state)
  */
-/obj/item/toy/singlecard/proc/Flip(orientation)
-	if(!isnull(orientation))
-		flipped = orientation
+/obj/item/toy/singlecard/proc/Flip(is_face_up)
+	if(!isnull(is_face_up))
+		flipped = is_face_up
 	else
 		flipped = !flipped
 
@@ -151,7 +152,7 @@
 
 	if(istype(item, /obj/item/toy/cards/deck))
 		var/obj/item/toy/cards/deck/dealer_deck = item
-		if(!dealer_deck.wielded) // recycle card into deck (if unwielded)
+		if(!HAS_TRAIT(dealer_deck, TRAIT_WIELDED)) // recycle card into deck (if unwielded)
 			dealer_deck.insert(src)
 			user.balloon_alert_to_viewers("puts card in deck")
 			return
@@ -168,9 +169,11 @@
 			// only decks cause a balloon alert
 			user.balloon_alert_to_viewers("deals a card")
 
-		var/obj/item/toy/cards/cardhand/new_cardhand = new (drop_location(), list(src, card))
+		var/obj/item/toy/cards/cardhand/new_cardhand = new (drop_location())
 		new_cardhand.pixel_x = pixel_x
 		new_cardhand.pixel_y = pixel_y
+		new_cardhand.insert(src)
+		new_cardhand.insert(card)
 
 		if(!isturf(loc)) // make a cardhand in our active hand
 			user.temporarilyRemoveItemFromInventory(src, TRUE)
@@ -207,7 +210,7 @@
 			return
 
 		var/cardtext = stripped_input(user, "What do you wish to write on the card?", "Card Writing", "", 50)
-		if(!cardtext || !user.canUseTopic(src, BE_CLOSE))
+		if(!cardtext || !user.can_perform_action(src))
 			return
 
 		cardname = cardtext
@@ -228,15 +231,14 @@
 	attack_self(user)
 
 /obj/item/toy/singlecard/attack_self(mob/living/carbon/human/user)
-	if(!ishuman(user) || !user.canUseTopic(src, BE_CLOSE, NO_DEXTERITY, NO_TK, !iscyborg(user)))
+	if(!ishuman(user) || !user.can_perform_action(src, NEED_DEXTERITY|FORBID_TELEKINESIS_REACH))
 		return
 
 	Flip()
 	if(isturf(src.loc)) // only display tihs message when flipping in a visible spot like on a table
 		user.balloon_alert_to_viewers("flips a card")
 
-/obj/item/toy/singlecard/AltClick(mob/living/carbon/human/user)
-	if(user.canUseTopic(src, BE_CLOSE, NO_DEXTERITY, NO_TK, !iscyborg(user)))
-		transform = turn(transform, 90)
+/obj/item/toy/singlecard/click_alt(mob/living/carbon/human/user)
+	transform = turn(transform, 90)
 		// use the simple_rotation component to make this turn with Alt+RMB & Alt+LMB at some point in the future - TimT
-	return ..()
+	return CLICK_ACTION_SUCCESS

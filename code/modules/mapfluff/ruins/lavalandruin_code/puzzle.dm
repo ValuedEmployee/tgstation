@@ -1,6 +1,6 @@
 /obj/effect/sliding_puzzle
 	name = "Sliding puzzle generator"
-	icon = 'icons/obj/balloons.dmi' //mapping
+	icon = 'icons/obj/toys/balloons.dmi' //mapping
 	icon_state = "syndballoon"
 	invisibility = INVISIBILITY_ABSTRACT
 	anchored = TRUE
@@ -138,10 +138,10 @@
 	return sortTim(elements,cmp=/proc/cmp_xy_desc)
 
 /obj/effect/sliding_puzzle/proc/get_base_icon()
-	var/icon/I = new('icons/obj/puzzle.dmi')
+	var/icon/I = new('icons/obj/fluff/puzzle.dmi')
 	var/list/puzzles = icon_states(I)
 	var/puzzle_state = pick(puzzles)
-	var/icon/P = new('icons/obj/puzzle.dmi',puzzle_state)
+	var/icon/P = new('icons/obj/fluff/puzzle.dmi',puzzle_state)
 	return P
 
 /obj/effect/sliding_puzzle/proc/setup()
@@ -160,10 +160,10 @@
 		var/y = width - round((id - 1) / width)
 		var/x = ((id - 1) % width) + 1
 
-		var/x_start = 1 + (x - 1) * world.icon_size
-		var/x_end = x_start + world.icon_size - 1
-		var/y_start = 1 + ((y - 1) * world.icon_size)
-		var/y_end = y_start + world.icon_size - 1
+		var/x_start = 1 + (x - 1) * ICON_SIZE_X
+		var/x_end = x_start + ICON_SIZE_X - 1
+		var/y_start = 1 + ((y - 1) * ICON_SIZE_Y)
+		var/y_end = y_start + ICON_SIZE_Y - 1
 
 		var/icon/T = new(base_icon)
 		T.Crop(x_start,y_start,x_end,y_end)
@@ -173,7 +173,7 @@
 	//Setup random empty tile
 	empty_tile_id = pick_n_take(left_ids)
 	var/turf/empty_tile_turf = get_turf_for_id(empty_tile_id)
-	empty_tile_turf.PlaceOnTop(floor_type,null,CHANGETURF_INHERIT_AIR)
+	empty_tile_turf.place_on_top(floor_type, CHANGETURF_INHERIT_AIR)
 	var/mutable_appearance/MA = new(puzzle_pieces["[empty_tile_id]"])
 	MA.layer = empty_tile_turf.layer + 0.1
 	empty_tile_turf.add_overlay(MA)
@@ -182,7 +182,7 @@
 	var/list/empty_spots = left_ids.Copy()
 	for(var/spot_id in empty_spots)
 		var/turf/T = get_turf_for_id(spot_id)
-		T = T.PlaceOnTop(floor_type,null,CHANGETURF_INHERIT_AIR)
+		T = T.place_on_top(floor_type, CHANGETURF_INHERIT_AIR)
 		var/obj/structure/puzzle_element/E = new element_type(T)
 		elements += E
 		var/chosen_id = pick_n_take(left_ids)
@@ -197,7 +197,7 @@
 /obj/structure/puzzle_element
 	name = "mysterious pillar"
 	desc = "puzzling..."
-	icon = 'icons/obj/lavaland/artefacts.dmi'
+	icon = 'icons/obj/mining_zones/artefacts.dmi'
 	icon_state = "puzzle_pillar"
 	anchored = FALSE
 	density = TRUE
@@ -223,6 +223,10 @@
 		puzzle_small.pixel_y = 7
 		add_overlay(puzzle_small)
 
+/obj/structure/puzzle_element/update_icon(updates=ALL) // to prevent update_appearance calls from cutting the overlays and not adding them back
+	. = ..()
+	set_puzzle_icon()
+
 /obj/structure/puzzle_element/Destroy()
 	if(source)
 		source.elements -= src
@@ -240,7 +244,7 @@
 		animate(src, pixel_x=rand(-5,5), pixel_y=rand(-2,2), time=1)
 	QDEL_IN(src,COLLAPSE_DURATION)
 
-/obj/structure/puzzle_element/Moved()
+/obj/structure/puzzle_element/Moved(atom/old_loc, movement_dir, forced, list/old_locs, momentum_change = TRUE)
 	. = ..()
 	if(source)
 		source.validate()
@@ -284,18 +288,28 @@
 /obj/effect/sliding_puzzle/prison/Destroy()
 	if(prisoner)
 		to_chat(prisoner,span_userdanger("With the cube broken by force, you can feel your body falling apart."))
+		prisoner.investigate_log("has died from their prison puzzle being destroyed.", INVESTIGATE_DEATHS)
 		prisoner.death()
 		qdel(prisoner)
 	. = ..()
 
 /obj/effect/sliding_puzzle/prison/dispense_reward()
 	prisoner.forceMove(get_turf(src))
-	prisoner.notransform = FALSE
+	REMOVE_TRAIT(prisoner, TRAIT_NO_TRANSFORM, element_type)
 	prisoner = null
 
 //Some armor so it's harder to kill someone by mistake.
 /obj/structure/puzzle_element/prison
-	armor = list(MELEE = 50, BULLET = 50, LASER = 50, ENERGY = 50, BOMB = 50, BIO = 0, FIRE = 50, ACID = 50)
+	armor_type = /datum/armor/puzzle_element_prison
+
+/datum/armor/puzzle_element_prison
+	melee = 50
+	bullet = 50
+	laser = 50
+	energy = 50
+	bomb = 50
+	fire = 50
+	acid = 50
 
 /obj/structure/puzzle_element/prison/relaymove(mob/living/user, direction)
 	return
@@ -303,24 +317,26 @@
 /obj/item/prisoncube
 	name = "Prison Cube"
 	desc = "Dusty cube with humanoid imprint on it."
-	icon = 'icons/obj/lavaland/artefacts.dmi'
+	icon = 'icons/obj/mining_zones/artefacts.dmi'
 	icon_state = "prison_cube"
 
-/obj/item/prisoncube/afterattack(atom/target, mob/user, proximity_flag, click_parameters)
-	. = ..()
-	if(!proximity_flag || !isliving(target))
-		return
-	var/mob/living/victim = target
-	var/mob/living/carbon/carbon_victim = victim
-	//Handcuffed or unconcious
-	if(istype(carbon_victim) && carbon_victim.handcuffed || victim.stat != CONSCIOUS)
-		if(!puzzle_imprison(target))
-			to_chat(user,span_warning("[src] does nothing."))
-			return
-		to_chat(user,span_warning("You trap [victim] in the prison cube!"))
+/obj/item/prisoncube/interact_with_atom(atom/interacting_with, mob/living/user, list/modifiers)
+	if(!isliving(interacting_with))
+		return NONE
+
+	var/mob/living/carbon/carbon_victim = interacting_with
+	//Handcuffed or unconscious
+	if(istype(carbon_victim) && (carbon_victim.handcuffed || carbon_victim.stat != CONSCIOUS))
+		user.do_attack_animation(carbon_victim)
+		if(!puzzle_imprison(carbon_victim))
+			to_chat(user, span_warning("[src] does nothing."))
+			return ITEM_INTERACT_BLOCKING
+		to_chat(user, span_warning("You trap [carbon_victim] in the prison cube!"))
 		qdel(src)
-	else
-		to_chat(user,span_notice("[src] only accepts restrained or unconcious prisoners."))
+		return ITEM_INTERACT_SUCCESS
+
+	to_chat(user, span_notice("[src] only accepts restrained or unconscious prisoners."))
+	return ITEM_INTERACT_BLOCKING
 
 /proc/puzzle_imprison(mob/living/prisoner)
 	var/turf/T = get_turf(prisoner)
@@ -330,7 +346,7 @@
 		return FALSE
 
 	//First grab the prisoner and move them temporarily into the generator so they won't get thrown around.
-	prisoner.notransform = TRUE
+	ADD_TRAIT(prisoner, TRAIT_NO_TRANSFORM, cube.element_type)
 	prisoner.forceMove(cube)
 	to_chat(prisoner,span_userdanger("You're trapped by the prison cube! You will remain trapped until someone solves it."))
 
@@ -352,3 +368,5 @@
 	var/obj/structure/puzzle_element/E = pick(cube.elements)
 	prisoner.forceMove(E)
 	return TRUE
+
+#undef COLLAPSE_DURATION

@@ -15,8 +15,8 @@
 	clawfootstep = FOOTSTEP_SAND
 	heavyfootstep = FOOTSTEP_GENERIC_HEAVY
 	tiled_dirt = FALSE
+	rust_resistance = RUST_RESISTANCE_ORGANIC
 	var/smooth_icon = 'icons/turf/floors/ash.dmi'
-
 
 /turf/open/misc/ashplanet/Initialize(mapload)
 	. = ..()
@@ -34,8 +34,8 @@
 	return
 
 /turf/open/misc/ashplanet/ash
-	smoothing_groups = list(SMOOTH_GROUP_TURF_OPEN, SMOOTH_GROUP_FLOOR_ASH)
-	canSmoothWith = list(SMOOTH_GROUP_FLOOR_ASH, SMOOTH_GROUP_CLOSED_TURFS)
+	smoothing_groups = SMOOTH_GROUP_TURF_OPEN + SMOOTH_GROUP_FLOOR_ASH
+	canSmoothWith = SMOOTH_GROUP_FLOOR_ASH + SMOOTH_GROUP_CLOSED_TURFS
 	layer = HIGH_TURF_LAYER
 	slowdown = 1
 
@@ -46,8 +46,8 @@
 	base_icon_state = "rocky_ash"
 	smooth_icon = 'icons/turf/floors/rocky_ash.dmi'
 	layer = MID_TURF_LAYER
-	smoothing_groups = list(SMOOTH_GROUP_TURF_OPEN, SMOOTH_GROUP_FLOOR_ASH_ROCKY)
-	canSmoothWith = list(SMOOTH_GROUP_FLOOR_ASH_ROCKY, SMOOTH_GROUP_CLOSED_TURFS)
+	smoothing_groups = SMOOTH_GROUP_TURF_OPEN + SMOOTH_GROUP_FLOOR_ASH_ROCKY
+	canSmoothWith = SMOOTH_GROUP_FLOOR_ASH_ROCKY + SMOOTH_GROUP_CLOSED_TURFS
 	footstep = FOOTSTEP_FLOOR
 	barefootstep = FOOTSTEP_HARD_BAREFOOT
 	clawfootstep = FOOTSTEP_HARD_CLAW
@@ -64,7 +64,11 @@
 	barefootstep = FOOTSTEP_HARD_BAREFOOT
 	clawfootstep = FOOTSTEP_HARD_CLAW
 	heavyfootstep = FOOTSTEP_GENERIC_HEAVY
+	rust_resistance = RUST_RESISTANCE_ORGANIC
 
 /turf/open/misc/ashplanet/wateryrock/Initialize(mapload)
 	icon_state = "[icon_state][rand(1, 9)]"
 	. = ..()
+
+/turf/open/misc/ashplanet/wateryrock/lavaland_atmos
+	initial_gas_mix = LAVALAND_DEFAULT_ATMOS

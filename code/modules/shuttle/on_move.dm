@@ -21,25 +21,22 @@ All ShuttleMove procs go here
 		return
 
 	var/shuttle_dir = shuttle.dir
-	for(var/i in contents)
-		var/atom/movable/thing = i
-		if(ismob(thing))
-			if(isliving(thing))
-				var/mob/living/M = thing
-				if(M.buckled)
-					M.buckled.unbuckle_mob(M, 1)
-				if(M.pulledby)
-					M.pulledby.stop_pulling()
-				M.stop_pulling()
-				M.visible_message(span_warning("[shuttle] slams into [M]!"))
-				SSblackbox.record_feedback("tally", "shuttle_gib", 1, M.type)
-				log_attack("[key_name(M)] was shuttle gibbed by [shuttle].")
-				M.gib()
-
-
-		else //non-living mobs shouldn't be affected by shuttles, which is why this is an else
-			if(istype(thing, /obj/singularity) || istype(thing, /obj/energy_ball))
+	for(var/atom/movable/thing as anything in contents)
+		if(thing.resistance_flags & SHUTTLE_CRUSH_PROOF)
+			continue
+		if(isliving(thing))
+			var/mob/living/living_thing = thing
+			if(living_thing.incorporeal_move) // Don't crush incorporeal things
 				continue
+			living_thing.buckled?.unbuckle_mob(living_thing, force = TRUE)
+			living_thing.pulledby?.stop_pulling()
+			living_thing.stop_pulling()
+			living_thing.visible_message(span_warning("[shuttle] slams into [living_thing]!"))
+			SSblackbox.record_feedback("tally", "shuttle_gib", 1, living_thing.type)
+			log_shuttle("[key_name(living_thing)] was shuttle gibbed by [shuttle].")
+			living_thing.investigate_log("has been gibbed by [shuttle].", INVESTIGATE_DEATHS)
+			living_thing.gib(DROP_ALL_REMAINS)
+		else if(!ismob(thing)) //non-living mobs shouldn't be affected by shuttles, which is why this is an else
 			if(!thing.anchored)
 				step(thing, shuttle_dir)
 			else
@@ -51,12 +48,11 @@ All ShuttleMove procs go here
 		return
 	// Destination turf changes.
 	// Baseturfs is definitely a list or this proc wouldnt be called.
-	var/shuttle_boundary = baseturfs.Find(/turf/baseturf_skipover/shuttle)
+	var/shuttle_depth = depth_to_find_baseturf(/turf/baseturf_skipover/shuttle)
 
-	if(!shuttle_boundary)
+	if(!shuttle_depth)
 		CRASH("A turf queued to move via shuttle somehow had no skipover in baseturfs. [src]([type]):[loc]")
-	var/depth = baseturfs.len - shuttle_boundary + 1
-	newT.CopyOnTop(src, 1, depth, TRUE)
+	newT.CopyOnTop(src, 1, shuttle_depth, TRUE)
 	newT.blocks_air = TRUE
 	newT.air_update_turf(TRUE, FALSE)
 	blocks_air = TRUE
@@ -74,10 +70,10 @@ All ShuttleMove procs go here
 	oldT.TransferComponents(src)
 
 	SSexplosions.wipe_turf(src)
-	var/shuttle_boundary = baseturfs.Find(/turf/baseturf_skipover/shuttle)
+	var/shuttle_depth = depth_to_find_baseturf(/turf/baseturf_skipover/shuttle)
 
-	if(shuttle_boundary)
-		oldT.ScrapeAway(baseturfs.len - shuttle_boundary + 1)
+	if(shuttle_depth)
+		oldT.ScrapeAway(shuttle_depth)
 
 	if(rotation)
 		shuttleRotate(rotation) //see shuttle_rotate.dm
@@ -113,16 +109,11 @@ All ShuttleMove procs go here
 
 // Called on atoms after everything has been moved
 /atom/movable/proc/afterShuttleMove(turf/oldT, list/movement_force, shuttle_dir, shuttle_preferred_direction, move_dir, rotation)
-	var/turf/newT = get_turf(src)
-	if (newT.z != oldT.z)
-		on_changed_z_level(oldT, newT)
-
+	SEND_SIGNAL(src, COMSIG_ATOM_AFTER_SHUTTLE_MOVE, oldT)
 	if(light)
 		update_light()
 	if(rotation)
 		shuttleRotate(rotation)
-
-	update_parallax_contents()
 
 	return TRUE
 
@@ -152,17 +143,12 @@ All ShuttleMove procs go here
 	if(newT == oldT) // In case of in place shuttle rotation shenanigans.
 		return TRUE
 
-	contents -= oldT
-	underlying_old_area.contents += oldT
-	oldT.transfer_area_lighting(src, underlying_old_area)
+	oldT.change_area(src, underlying_old_area)
 	//The old turf has now been given back to the area that turf originaly belonged to
 
 	var/area/old_dest_area = newT.loc
 	parallax_movedir = old_dest_area.parallax_movedir
-
-	old_dest_area.contents -= newT
-	contents += newT
-	newT.transfer_area_lighting(old_dest_area, src)
+	newT.change_area(old_dest_area, src)
 	return TRUE
 
 // Called on areas after everything has been moved
@@ -181,19 +167,54 @@ All ShuttleMove procs go here
 
 /obj/machinery/door/airlock/beforeShuttleMove(turf/newT, rotation, move_mode, obj/docking_port/mobile/moving_dock)
 	. = ..()
+
+	if (cycle_pump)
+		INVOKE_ASYNC(cycle_pump, TYPE_PROC_REF(/obj/machinery/atmospherics/components/unary/airlock_pump, undock))
+
 	for(var/obj/machinery/door/airlock/other_airlock in range(2, src))  // includes src, extended because some escape pods have 1 plating turf exposed to space
 		other_airlock.shuttledocked = FALSE
 		other_airlock.air_tight = TRUE
-		INVOKE_ASYNC(other_airlock, /obj/machinery/door/.proc/close, FALSE, TRUE) // force crush
+		if (other_airlock.cycle_pump)
+			INVOKE_ASYNC(other_airlock.cycle_pump, TYPE_PROC_REF(/obj/machinery/atmospherics/components/unary/airlock_pump, undock))
+			continue
+		INVOKE_ASYNC(other_airlock, TYPE_PROC_REF(/obj/machinery/door/, close), FALSE, TRUE) // force crush
 
 /obj/machinery/door/airlock/afterShuttleMove(turf/oldT, list/movement_force, shuttle_dir, shuttle_preferred_direction, move_dir, rotation)
 	. = ..()
 	var/current_area = get_area(src)
+	var/turf/local_turf
+	var/tile_air_pressure
 	for(var/obj/machinery/door/airlock/other_airlock in orange(2, src))  // does not include src, extended because some escape pods have 1 plating turf exposed to space
 		if(get_area(other_airlock) != current_area)  // does not include double-wide airlocks unless actually docked
 			// Cycle linking is only disabled if we are actually adjacent to another airlock
 			shuttledocked = TRUE
 			other_airlock.shuttledocked = TRUE
+			if (other_airlock.cycle_pump)
+				local_turf = get_step(src, REVERSE_DIR(other_airlock.cycle_pump.dir))
+				tile_air_pressure = 0
+				if (local_turf)
+					tile_air_pressure = max(0, local_turf.return_air().return_pressure())
+				INVOKE_ASYNC(other_airlock.cycle_pump, TYPE_PROC_REF(/obj/machinery/atmospherics/components/unary/airlock_pump, on_dock_request), tile_air_pressure)
+			// Save external airlocks turf in case our own docking purpouses
+			local_turf = get_turf(other_airlock)
+
+	if (cycle_pump)
+		tile_air_pressure = 0
+		if (local_turf)
+			local_turf = get_step(local_turf, REVERSE_DIR(cycle_pump.dir))
+			if (local_turf)
+				tile_air_pressure = max(0, local_turf.return_air().return_pressure())
+			INVOKE_ASYNC(cycle_pump, TYPE_PROC_REF(/obj/machinery/atmospherics/components/unary/airlock_pump, on_dock_request), tile_air_pressure)
+		else
+			// In case, somebody decides to build an airlock on evac shuttle, we count CentComs blastdoors as valid docking airlock
+			local_turf = get_step(src, REVERSE_DIR(cycle_pump.dir))
+			if (local_turf)
+				for(var/obj/machinery/door/poddoor/shuttledock/centcom_airlock in local_turf)
+					// For some reason on docking moment those tiles are vacuum, and pump denies safe_dock attempt
+					// To fix this we're lying, that external pressure is nominal
+					INVOKE_ASYNC(cycle_pump, TYPE_PROC_REF(/obj/machinery/atmospherics/components/unary/airlock_pump, on_dock_request), ONE_ATMOSPHERE)
+					break
+
 
 /obj/machinery/camera/beforeShuttleMove(turf/newT, rotation, move_mode, obj/docking_port/mobile/moving_dock)
 	. = ..()
@@ -256,33 +277,23 @@ All ShuttleMove procs go here
 /obj/machinery/navbeacon/afterShuttleMove(turf/oldT, list/movement_force, shuttle_dir, shuttle_preferred_direction, move_dir, rotation)
 	. = ..()
 
-	if(codes["patrol"])
+	if(codes[NAVBEACON_PATROL_MODE])
 		if(!GLOB.navbeacons["[z]"])
 			GLOB.navbeacons["[z]"] = list()
 		GLOB.navbeacons["[z]"] += src //Register with the patrol list!
-	if(codes["delivery"])
+	if(codes[NAVBEACON_DELIVERY_MODE])
 		GLOB.deliverybeacons += src
 		GLOB.deliverybeacontags += location
-
-/************************************Item move procs************************************/
-
-/obj/item/storage/pod/afterShuttleMove(turf/oldT, list/movement_force, shuttle_dir, shuttle_preferred_direction, move_dir, rotation)
-	. = ..()
-	// If the pod was launched, the storage will always open. The reserved_level check
-	// ignores the movement of the shuttle from the transit level to
-	// the station as it is loaded in.
-	if (oldT && !is_reserved_level(oldT.z))
-		unlocked = TRUE
 
 /************************************Mob move procs************************************/
 
 /mob/onShuttleMove(turf/newT, turf/oldT, list/movement_force, move_dir, obj/docking_port/stationary/old_dock, obj/docking_port/mobile/moving_dock)
-	if(!move_on_shuttle)
+	if(HAS_TRAIT(src, TRAIT_BLOCK_SHUTTLE_MOVEMENT))
 		return
 	. = ..()
 
 /mob/afterShuttleMove(turf/oldT, list/movement_force, shuttle_dir, shuttle_preferred_direction, move_dir, rotation)
-	if(!move_on_shuttle)
+	if(HAS_TRAIT(src, TRAIT_BLOCK_SHUTTLE_MOVEMENT))
 		return
 	. = ..()
 	if(client && movement_force)
@@ -327,7 +338,7 @@ All ShuttleMove procs go here
 	Connect_cable(TRUE)
 	propagate_if_no_network()
 
-/obj/structure/shuttle/beforeShuttleMove(turf/newT, rotation, move_mode, obj/docking_port/mobile/moving_dock)
+/obj/machinery/power/shuttle_engine/beforeShuttleMove(turf/newT, rotation, move_mode, obj/docking_port/mobile/moving_dock)
 	. = ..()
 	if(. & MOVE_AREA)
 		. |= MOVE_CONTENTS
@@ -359,6 +370,10 @@ All ShuttleMove procs go here
 /obj/docking_port/stationary/onShuttleMove()
 	return FALSE
 
+// Holy shit go away
+/obj/effect/abstract/z_holder/onShuttleMove()
+	return FALSE
+
 // Special movable stationary port, for your mothership shenanigans
 /obj/docking_port/stationary/movable/onShuttleMove(turf/newT, turf/oldT, list/movement_force, move_dir, obj/docking_port/stationary/old_dock, obj/docking_port/mobile/moving_dock)
 	if(!moving_dock.can_move_docking_ports || old_dock == src)
@@ -375,4 +390,4 @@ All ShuttleMove procs go here
 	return TRUE
 
 /obj/docking_port/stationary/public_mining_dock/onShuttleMove(turf/newT, turf/oldT, list/movement_force, move_dir, obj/docking_port/stationary/old_dock, obj/docking_port/mobile/moving_dock)
-	id = "mining_public" //It will not move with the base, but will become enabled as a docking point.
+	shuttle_id = "mining_public" //It will not move with the base, but will become enabled as a docking point.

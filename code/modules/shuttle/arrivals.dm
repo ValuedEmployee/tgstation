@@ -1,10 +1,7 @@
 /obj/docking_port/mobile/arrivals
 	name = "arrivals shuttle"
-	id = "arrivals"
+	shuttle_id = "arrival"
 
-	dwidth = 3
-	width = 7
-	height = 15
 	dir = WEST
 	port_direction = SOUTH
 
@@ -37,12 +34,14 @@
 	areas = list()
 
 	var/list/new_latejoin = list()
-	for(var/area/shuttle/arrival/A in GLOB.sortedAreas)
-		for(var/obj/structure/chair/C in A)
-			new_latejoin += C
-		if(!console)
-			console = locate(/obj/machinery/requests_console) in A
-		areas += A
+	for(var/area/shuttle/arrival/arrival_area in GLOB.areas)
+		for (var/list/zlevel_turfs as anything in arrival_area.get_zlevel_turf_lists())
+			for(var/turf/arrival_turf as anything in zlevel_turfs)
+				for(var/obj/structure/chair/shuttle_chair in arrival_turf)
+					new_latejoin += shuttle_chair
+				if(isnull(console))
+					console = locate() in arrival_turf
+		areas += arrival_area
 
 	if(SSjob.latejoin_trackers.len)
 		log_mapping("Map contains predefined latejoin spawn points and an arrivals shuttle. Using the arrivals shuttle.")
@@ -113,14 +112,9 @@
 	return FALSE
 
 /obj/docking_port/mobile/arrivals/proc/PersonCheck()
-	for(var/V in GLOB.player_list)
-		var/mob/M = V
-		if((get_area(M) in areas) && M.stat != DEAD)
-			if(!iscameramob(M))
-				return TRUE
-			var/mob/camera/C = M
-			if(C.move_on_shuttle)
-				return TRUE
+	for(var/mob/player as anything in GLOB.player_list)
+		if((get_area(player) in areas) && (player.stat != DEAD) && !HAS_TRAIT(player, TRAIT_BLOCK_SHUTTLE_MOVEMENT))
+			return TRUE
 	return FALSE
 
 /obj/docking_port/mobile/arrivals/proc/NukeDiskCheck()
@@ -181,7 +175,7 @@
 			console.say(pickingup ? "Departing immediately for new employee pickup." : "Shuttle departing.")
 		var/obj/docking_port/stationary/target = target_dock
 		if(QDELETED(target))
-			target = SSshuttle.getDock("arrivals_stationary")
+			target = SSshuttle.getDock("arrival_stationary")
 		request(target) //we will intentionally never return SHUTTLE_ALREADY_DOCKED
 
 /obj/docking_port/mobile/arrivals/proc/RequireUndocked(mob/user)
@@ -205,7 +199,7 @@
 	if(mode != SHUTTLE_CALL)
 		announce_arrival(mob, rank)
 	else
-		LAZYADD(queued_announces, CALLBACK(GLOBAL_PROC, .proc/announce_arrival, mob, rank))
+		LAZYADD(queued_announces, CALLBACK(GLOBAL_PROC, GLOBAL_PROC_REF(announce_arrival), mob, rank))
 
 /obj/docking_port/mobile/arrivals/vv_edit_var(var_name, var_value)
 	switch(var_name)
